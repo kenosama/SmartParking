@@ -14,7 +14,11 @@ return new class extends Migration
         Schema::create('parkings', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->string('address');  
+            $table->string('street');
+            $table->string('location_number');
+            $table->string('zip_code');
+            $table->string('city');
+            $table->string('parking_spot_id'); //comment faire pour donner les id de plusieurs place si le user en a plus qu'un.  
             $table->integer('capacity');
             $table->string('opening_hours');
             $table->string('opening_days'); //Format : 1,2,3...to 7.

@@ -8,7 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\User;
 use App\Models\Reservation;
-
+use App\Models\ParkingSpot;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Parking extends Model
 {
@@ -16,10 +17,14 @@ class Parking extends Model
 
     protected $fillable = [
         'name',
-        'address',
+        'street',
+        'location_number', // like house number
+        'zip_code',
+        'city',
         'capacity',
+        'price_per_hour',
         'opening_hours',
-        'opening_days',
+        'opening_days', //format: 1,2,3....7
         'user_id',
     ];
 /**
@@ -34,8 +39,17 @@ public function user(): BelongsTo
  * The reservations made on this parking
  */
 
- public function reservations(): HasMany
- {
-    return $this->hasMany(Reservation::class);
- }
+public function reservations(): HasManyThrough
+{
+        return $this->hasManyThrough(
+        Reservation::class, 
+        ParkingSpot::class
+    );
+    }
+
+    public function spots(): HasMany
+{
+    return $this->hasMany(ParkingSpot::class);
 }
+}
+

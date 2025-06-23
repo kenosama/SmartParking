@@ -15,13 +15,25 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->foreignId('parking_id')->constrained()->onDelete('cascade');
-            $table->date('reserved_date'); //beging date of the booking.
-            $table->date('end_date')->nullable(); //end date of the booking.
+            $table->foreignId('parking_spot_id')->constrained()->onDelete('cascade'); // ⚠️ Correctement défini maintenant
+
+            $table->date('reserved_date'); // début de réservation
+            $table->date('end_date')->nullable(); // fin (optionnelle)
             $table->time('start_time');
             $table->time('end_time');
-            $table->enum('status', ['active','cancelled_by_user','cancelled_by_owner','done'])->default('active');
-            // $table->unique(['parking_id', 'reserved_date', 'start_time', 'end_time']);
+
+            $table->enum('status', [
+                'active',
+                'cancelled_by_user',
+                'cancelled_by_owner',
+                'done'
+            ])->default('active');
+
+
             $table->timestamps();
+
+            // Optionnel : empêcher les réservations doublons
+            $table->unique(['parking_spot_id', 'reserved_date', 'start_time', 'end_time'], 'unique_reservation');
         });
     }
 

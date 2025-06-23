@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\User;
-use App\Models\Parking;
+use App\Models\ParkingSpot;
 
 class Reservation extends Model
 {
@@ -14,16 +14,16 @@ class Reservation extends Model
 
     protected $fillable = [
         'user_id',
-        'parking_id',
+        'parking_spot_id',
         'reserved_date',
         'end_date',
         'start_time',
         'end_time',
-        'status',
+        'status', // facultatif : ex. "pending", "confirmed", "cancelled"
     ];
 
     /**
-     * The user who made the reservation
+     * L'utilisateur qui a effectué cette réservation.
      */
     public function user(): BelongsTo
     {
@@ -31,10 +31,19 @@ class Reservation extends Model
     }
 
     /**
-     * The reserved parking
+     * La place de parking réservée.
+     */
+    public function parkingSpot(): BelongsTo
+    {
+        return $this->belongsTo(ParkingSpot::class);
+    }
+
+    /**
+     * (Facultatif) Le parking parent via la place.
+     * Pour accéder directement au parking depuis une réservation.
      */
     public function parking(): BelongsTo
     {
-        return $this->belongsTo(Parking::class);
+        return $this->parkingSpot?->parking();
     }
 }
