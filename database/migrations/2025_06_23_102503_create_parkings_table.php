@@ -1,37 +1,85 @@
 <?php
 
-use Illuminate\Database\Migrations\Migration;
-use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
+namespace App\Http\Controllers\Api;
 
-return new class extends Migration
+use App\Http\Controllers\Controller;
+use App\Models\Parking;
+use Illuminate\Http\Request;
+
+class ParkingController extends Controller
 {
     /**
-     * Run the migrations.
+     * Affiche tous les parkings (avec relations user et spots)
      */
-    public function up(): void
+    public function index()
     {
-        Schema::create('parkings', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('street');
-            $table->string('location_number');
-            $table->string('zip_code');
-            $table->string('city');
-            $table->string('parking_spot_id'); //comment faire pour donner les id de plusieurs place si le user en a plus qu'un.  
-            $table->integer('capacity');
-            $table->string('opening_hours');
-            $table->string('opening_days'); //Format : 1,2,3...to 7.
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->timestamps();
-        });
+        return response()->json(
+            Parking::with(['user', 'parkingSpots'])->get()
+        );
     }
 
     /**
-     * Reverse the migrations.
+     * Crée un nouveau parking
      */
-    public function down(): void
+    public function store(Request $request)
     {
-        Schema::dropIfExists('parkings');
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'street' => 'required|string|max:255',
+            'location_number' => 'required|string|max:50',
+            'zip_code' => 'required|string|max:20',
+            'city' => 'required|string|max:255',
+            'capacity' => 'required|integer|min:1',
+            'price_per_hour' => 'required|numeric|min:0',
+            'opening_hours' => 'required|string',
+            'opening_days' => 'required|string',
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        $parking = Parking::create($validated);
+
+        return response()->json($parking->load('user', 'parkingSpots'), 201);
     }
-};
+
+    /**
+     * Affiche un parking spécifique
+     */
+    public function show(Parking $parking)
+    {
+        return response()->json(
+            $parking->load('user', 'parkingSpots')
+        );
+    }
+
+    /**
+     * Met à jour un parking
+     */
+    public function update(Request $request, Parking $parking)
+    {
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'street' => 'sometimes|required|string|max:255',
+            'location_number' => 'sometimes|required|string|max:50',
+            'zip_code' => 'sometimes|required|string|max:20',
+            'city' => 'sometimes|required|string|max:255',
+            'capacity' => 'sometimes|required|integer|min:1',
+            'price_per_hour' => 'sometimes|required|numeric|min:0',
+            'opening_hours' => 'sometimes|required|string',
+            'opening_days' => 'sometimes|required|string',
+            'user_id' => 'sometimes|required|exists:users,id',
+        ]);
+
+        $parking->update($validated);
+
+        return response()->json($parking->load('user', 'parkingSpots'));
+    }
+
+    /**
+     * Supprime un parking
+     */
+    public function destroy(Parking $parking)
+    {
+        $parking->delete();
+        return response()->json(['message' => 'Parking deleted'], 204);
+    }
+}

@@ -3,47 +3,48 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Parking;
 use Illuminate\Http\Request;
 
 class ParkingController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        //
+        return Parking::with('user', 'parkingSpots')->get();
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        //
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'street' => 'required|string',
+            'location_number' => 'required|string',
+            'zip_code' => 'required|string',
+            'city' => 'required|string',
+            'capacity' => 'required|integer',
+            'price_per_hour' => 'required|numeric',
+            'opening_hours' => 'required|string',
+            'opening_days' => 'required|string',
+            'user_id' => 'required|exists:users,id',
+        ]);
+
+        return Parking::create($validated);
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function show(Parking $parking)
     {
-        //
+        return $parking->load('user', 'parkingSpots');
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Parking $parking)
     {
-        //
+        $parking->update($request->all());
+        return $parking;
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    public function destroy(Parking $parking)
     {
-        //
+        $parking->delete();
+        return response()->noContent();
     }
 }
