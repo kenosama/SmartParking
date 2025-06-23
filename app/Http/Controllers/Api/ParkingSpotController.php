@@ -25,10 +25,9 @@ class ParkingSpotController extends Controller
      */
     public function store(Request $request)
     {
-        // ✅ Valide les données envoyées pour créer une place de parking.
-        // Ces champs sont requis pour définir une place dans un parking existant.
+        // ✅ Valide les données envoyées.
         $validated = $request->validate([
-            'identifier' => 'required|string|max:10',
+            'identifiers' => 'required|string', // Ex: "A1-A5,B1,B2-B3"
             'parking_id' => 'required|exists:parkings,id',
             'allow_electric_charge' => 'boolean',
             'is_available' => 'boolean',
@@ -38,38 +37,97 @@ class ParkingSpotController extends Controller
             'note' => 'nullable|string|max:255',
         ]);
 
-        // 🔗 Récupère le parking associé pour vérifier les contraintes liées à la capacité.
         $parking = \App\Models\Parking::findOrFail($validated['parking_id']);
+        $existingCount = $parking->spots()->count();
 
-        // ⚠️ Vérifie si le nombre total de places existantes dépasse la capacité du parking.
-        // La relation parking->spots est définie dans le modèle Parking (hasMany).
-        $existingSpotsCount = $parking->spots()->count();
-        if ($existingSpotsCount >= $parking->capacity) {
-            return response()->json([
-                'error' => 'Ce parking a déjà atteint sa capacité maximale de ' . $parking->capacity . ' places.'
-            ], 400);
+        // 📦 Gère les identifiants multiples et les plages (ex: A1-A5, B1-B2, C3)
+        $input = $request->input('identifiers');
+        $identifiers = collect(explode(',', $input))
+            ->flatMap(function ($item) {
+                $item = trim($item);
+                if (preg_match('/^([A-Z])(\d+)-([A-Z])(\d+)$/i', $item, $m) && $m[1] === $m[3]) {
+                    // Plage même lettre : A1-A5
+                    $prefix = strtoupper($m[1]);
+                    $start = intval($m[2]);
+                    $end = intval($m[4]);
+                    return collect(range($start, $end))->map(fn($n) => $prefix . $n);
+                } elseif (preg_match('/^(\d+)-(\d+)$/', $item, $m)) {
+                    // Plage numérique : 101-105
+                    return collect(range(intval($m[1]), intval($m[2])));
+                } else {
+                    return [$item];
+                }
+            })
+            ->map(fn($id) => strtoupper(trim($id)))
+            ->unique();
+
+        // 🚨 Vérifie si ça dépasse la capacité
+        if ($existingCount + $identifiers->count() > $parking->total_capacity) {
+            return response()->json(['error' => 'Trop de places par rapport à la capacité.'], 400);
         }
 
-        // ❌ Vérifie s’il existe déjà une place avec le même identifiant (ex: A1) dans le même parking.
-        // Cela garantit l’unicité des identifiants dans un parking donné.
-        $duplicate = $parking->spots()
-            ->where('identifier', $validated['identifier'])
-            ->exists();
+        // 🎯 Vérifie les doublons dans la DB
+        $existing = $parking->spots()
+            ->whereIn('identifier', $identifiers)
+            ->pluck('identifier')
+            ->map(fn($v) => strtoupper($v))
+            ->toArray();
 
-        if ($duplicate) {
-            return response()->json([
-                'error' => 'Une place avec cet identifiant existe déjà dans ce parking.'
-            ], 409);
+        if (!empty($existing)) {
+            return response()->json(['error' => 'Les identifiants suivants existent déjà : ' . implode(', ', $existing)], 409);
         }
 
-        // 🏷️ Crée une nouvelle place avec les infos validées, liée à l'utilisateur connecté.
-        // La relation user->parking_spots est implicite via user_id.
-        $spot = ParkingSpot::create([
-            ...$validated,
-            'user_id' => Auth::id(),
-        ]);
+        // 🧱 Crée les nouvelles places
+        $created = [];
+        foreach ($identifiers as $identifier) {
+            $spot = ParkingSpot::create([
+                'identifier' => $identifier,
+                'parking_id' => $validated['parking_id'],
+                'user_id' => Auth::id(),
+                'allow_electric_charge' => $request->boolean('allow_electric_charge', false),
+                'is_available' => $request->boolean('is_available', true),
+                'per_day_only' => $request->boolean('per_day_only', false),
+                'price_per_day' => $validated['price_per_day'] ?? null,
+                'price_per_hour' => $validated['price_per_hour'] ?? null,
+                'note' => $validated['note'] ?? null,
+            ]);
+            $spot->load(['parking', 'user']);
+            $created[] = [
+                'user' => [
+                    'full_name' => $spot->user->first_name . ' ' . $spot->user->last_name,
+                    'email' => $spot->user->email,
+                ],
+                'parking' => [
+                    'id' => $spot->parking->id,
+                    'name' => $spot->parking->name,
+                    'street' => $spot->parking->street,
+                    'location_number' => $spot->parking->location_number,
+                    'zip_code' => $spot->parking->zip_code,
+                    'city' => $spot->parking->city,
+                    'country' => $spot->parking->country,
+                    'total_capacity' => $spot->parking->total_capacity,
+                    'is_open_24h' => $spot->parking->is_open_24h,
+                    'opening_hours' => $spot->parking->opening_hours,
+                    'opening_days' => $spot->parking->opening_days,
+                ],
+                'spot' => [
+                    'id' => $spot->id,
+                    'identifier' => $spot->identifier,
+                    'allow_electric_charge' => $spot->allow_electric_charge,
+                    'is_available' => $spot->is_available,
+                    'per_day_only' => $spot->per_day_only,
+                    'price_per_day' => $spot->price_per_day,
+                    'price_per_hour' => $spot->price_per_hour,
+                ]
+            ];
+        }
 
-        return response()->json($spot, 201);
+        return response()->json([
+            'parking' => $created[0]['parking'],
+            'user' => $created[0]['user'],
+            'spots' => collect($created)->pluck('spot'),
+            'count' => count($created),
+        ], 201);
     }
 
     /**
