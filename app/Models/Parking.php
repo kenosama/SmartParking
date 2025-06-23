@@ -53,4 +53,3 @@ public function reservations(): HasManyThrough
     return $this->hasMany(ParkingSpot::class);
 }
 }
-

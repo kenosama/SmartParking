@@ -24,7 +24,7 @@ return new class extends Migration
             $table->string('opening_hours')->nullable(); // placer null si ouvert 24/24h
             $table->string('opening_days')->nullable(true); //Format : 1,2,3...to 7, NULL si ouvert 24/24.
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->unique(['name', 'street', 'location_number', 'zip_code', 'city']);
+            $table->unique(['street', 'location_number', 'zip_code', 'city']);
             $table->timestamps();
         });
     }
