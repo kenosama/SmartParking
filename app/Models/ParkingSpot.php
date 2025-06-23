@@ -15,7 +15,9 @@ class ParkingSpot extends Model
 
     protected $fillable = [
         'identifier',      // Ex: "1A", "2B", etc.
+        'user_id',         // clé étrangere vers le user
         'parking_id',      // Clé étrangère vers parkings
+        'price_per_hours', // prix a l'heure pour le spot en question
         'is_available',    // booléen pour indiquer la dispo
     ];
 

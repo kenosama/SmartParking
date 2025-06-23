@@ -10,8 +10,12 @@ return new class extends Migration {
         Schema::create('parking_spots', function (Blueprint $table) {
             $table->id();
             $table->foreignId('parking_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('identifier'); // ex : A1, B2, C3
             $table->boolean('is_available')->default(true);
+            $table->boolean('per_day_only');
+            $table->decimal('price_per_day',10,2)->default(99);
+            $table->decimal('price_per_hour',6,2)->default(3.5);
             $table->timestamps();
 
             $table->unique(['parking_id', 'identifier']); // Évite les doublons dans un même parking

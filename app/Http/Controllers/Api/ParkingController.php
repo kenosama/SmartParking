@@ -16,15 +16,16 @@ class ParkingController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string',
+            'name' => 'required|string|max:255',
             'street' => 'required|string',
             'location_number' => 'required|string',
             'zip_code' => 'required|string',
             'city' => 'required|string',
-            'capacity' => 'required|integer',
-            'price_per_hour' => 'required|numeric',
-            'opening_hours' => 'required|string',
-            'opening_days' => 'required|string',
+            'country'=> 'required|string',
+            'total_capacity' => 'required|integer',
+            'is_open_24h'=> 'required|boolean',
+            'opening_hours'=> 'string',
+            'opening_days' => 'string',
             'user_id' => 'required|exists:users,id',
         ]);
 

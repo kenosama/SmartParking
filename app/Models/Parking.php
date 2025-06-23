@@ -21,10 +21,11 @@ class Parking extends Model
         'location_number', // like house number
         'zip_code',
         'city',
-        'capacity',
-        'price_per_hour',
-        'opening_hours',
-        'opening_days', //format: 1,2,3....7
+        'country',
+        'total_capacity',
+        'is_open_24h',
+        'opening_hours', //nullable if open 24/24
+        'opening_days', //format: 1,2,3....7 nullable if open 24/24
         'user_id',
     ];
 /**

@@ -23,20 +23,20 @@ class AuthenticatedSessionController extends Controller
     // }
     public function store(Request $request)
     {
+        dd($request->all());
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
         if (!Auth::attempt($request->only('email', 'password'))) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
+            return response()->json(['message' => 'Invalid login details'], 401);
         }
 
         $user = Auth::user();
-        $token = $user->createToken('api-token')->plainTextToken;
 
         return response()->json([
-            'token' => $token,
+            'token' => $user->createToken('api-token')->plainTextToken,
             'user' => $user,
         ]);
     }
