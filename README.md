@@ -33,7 +33,7 @@ php artisan migrate --seed
 
 # Lancer le serveur local
 php artisan serve
-
+```
 🗺️ Roadmap
 	•	Initialiser le projet Laravel
 	•	Configurer la base de données
