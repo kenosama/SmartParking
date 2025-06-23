@@ -24,6 +24,13 @@ class ParkingController extends BaseController
 
     public function store(Request $request)
     {
+        // 🔄 Normalisation de la chaîne "opening_days" : on remplace les tirets par des virgules
+        if ($request->has('opening_days')) {
+            $request->merge([
+                'opening_days' => str_replace('-', ',', $request->input('opening_days')),
+            ]);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'street' => 'required|string',
@@ -33,8 +40,8 @@ class ParkingController extends BaseController
             'country'=> 'required|string',
             'total_capacity' => 'required|integer',
             'is_open_24h'=> 'required|boolean',
-            'opening_hours'=> 'string',
-            'opening_days' => 'required_if:is_open_24h,false|nullable|regex:/^([1-7](-[1-7])*)?$/',
+            'opening_hours' => 'nullable|string|required_if:is_open_24h,false',
+            'opening_days' => 'nullable|string|required_if:is_open_24h,false|regex:/^([1-7](,[1-7])*)?$/'
         ]);
 
         $validated['user_id'] = Auth::id();
