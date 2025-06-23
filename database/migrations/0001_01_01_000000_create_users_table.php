@@ -21,6 +21,7 @@ return new class extends Migration
             $table->boolean('is_admin')->default(false);
             $table->boolean('is_owner')->default(false);
             $table->boolean('is_tenant')->default(true);
+            $table->boolean('is_active')->default(true);
             $table->rememberToken();
             $table->timestamps();
         });

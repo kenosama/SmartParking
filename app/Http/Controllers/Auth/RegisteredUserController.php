@@ -36,6 +36,7 @@ class RegisteredUserController extends Controller
             'password' => Hash::make($request->password),
             'is_owner' => $request->boolean('is_owner', false),
             'is_tenant' => $request->boolean('is_tenant', true), //un proprietaire peut etre locataire d'autre spots qui ne lui appartiennent pas.
+            'is_active'=> true, // de base un user est toujours actif a moins que l'user ou un admin le désactive, évite de supprimer des lignes dans la DB dans le cas ou un user se delete lui meme et regrette son choix.
             'is_admin' => false, // Ne jamais laisser un utilisateur s’autodéclarer admin
         ]);
 
