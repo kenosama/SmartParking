@@ -8,6 +8,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use App\Models\Parking;
+use App\Models\ParkingSpot;
 use App\Models\Reservation;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -22,10 +23,13 @@ class User extends Authenticatable
      * @var list<string>
      */
     protected $fillable = [
-        'name',
+        'first_name',
+        'last_name',
         'email',
         'password',
-        'role',
+        'is_admin',
+        'is_owner',
+        'is_tenant',
     ];
 
     /**
@@ -68,4 +72,29 @@ public function parkings(): HasMany
  {
     return $this->hasMany(Reservation::class);
  }
+
+/**
+ * A user can posses multiple parking spots
+ */
+    public function parkingSpots(): HasMany
+    {
+        return $this->hasMany(ParkingSpot::class);
+    }
+/**
+* Helper methods to check user roles.
+*/
+    public function isAdmin(): bool
+    {
+        return $this->is_admin;
+    }
+
+    public function isOwner(): bool
+    {
+        return $this->is_owner;
+    }
+
+    public function isTenant(): bool
+    {
+        return $this->is_tenant;
+    }
 }

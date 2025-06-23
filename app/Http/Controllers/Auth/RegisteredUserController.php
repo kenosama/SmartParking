@@ -21,15 +21,22 @@ class RegisteredUserController extends Controller
     public function store(Request $request): JsonResponse
     {
         $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:'.User::class],
+            'first_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'string', 'lowercase', 'email', 'max:255', 'unique:' . User::class],
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'is_owner' => ['boolean'],
+            'is_tenant' => ['boolean'],
         ]);
 
         $user = User::create([
-            'name' => $request->name,
+            'first_name' => $request->first_name,
+            'last_name' => $request->last_name,
             'email' => $request->email,
-            'password' => Hash::make($request->string('password')),
+            'password' => Hash::make($request->password),
+            'is_owner' => $request->boolean('is_owner', false),
+            'is_tenant' => $request->boolean('is_tenant', true), //un proprietaire peut etre locataire d'autre spots qui ne lui appartiennent pas.
+            'is_admin' => false, // Ne jamais laisser un utilisateur s’autodéclarer admin
         ]);
 
         event(new Registered($user));
