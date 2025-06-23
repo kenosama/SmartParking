@@ -11,14 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('parkings', function (Blueprint $table) {
+        Schema::create('personal_access_tokens', function (Blueprint $table) {
             $table->id();
+            $table->morphs('tokenable');
             $table->string('name');
-            $table->string('address');  
-            $table->integer('capacity');
-            $table->string('opening_hours');
-            $table->string('opening_days'); //Format : 1,2,3...to 7.
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('token', 64)->unique();
+            $table->text('abilities')->nullable();
+            $table->timestamp('last_used_at')->nullable();
+            $table->timestamp('expires_at')->nullable();
             $table->timestamps();
         });
     }
@@ -28,6 +28,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('parkings');
+        Schema::dropIfExists('personal_access_tokens');
     }
 };
