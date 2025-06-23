@@ -2,12 +2,21 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Http\Controllers\Controller;
+use Illuminate\Routing\Controller as BaseController;
 use App\Models\Parking;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
-class ParkingController extends Controller
+/**
+ * @extends \Illuminate\Routing\Controller
+ */
+class ParkingController extends BaseController
 {
+    public function __construct()
+    {
+        $this->middleware('auth:sanctum');
+    }
+
     public function index()
     {
         return Parking::with('user', 'parkingSpots')->get();
@@ -25,9 +34,10 @@ class ParkingController extends Controller
             'total_capacity' => 'required|integer',
             'is_open_24h'=> 'required|boolean',
             'opening_hours'=> 'string',
-            'opening_days' => 'string',
-            'user_id' => 'required|exists:users,id',
+            'opening_days' => 'required_if:is_open_24h,false|nullable|regex:/^([1-7](-[1-7])*)?$/',
         ]);
+
+        $validated['user_id'] = Auth::id();
 
         return Parking::create($validated);
     }
