@@ -30,7 +30,8 @@ class ReservationController extends Controller
             'end_date' => 'nullable|date|after_or_equal:reserved_date',
             'start_time' => 'required|date_format:H:i',
             'end_time' => 'required|date_format:H:i|after:start_time',
-            'status' => 'in:active,cancelled_by_user,cancelled_by_owner,done'
+            'status' => 'in:active,cancelled_by_user,cancelled_by_owner,done',
+            'license_plate'=> 'required|string'
         ]);
 
         $reservation = Reservation::create($validated);

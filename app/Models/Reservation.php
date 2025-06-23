@@ -19,6 +19,7 @@ class Reservation extends Model
         'end_date',
         'start_time',
         'end_time',
+        'license_plate',
         'status', // facultatif : ex. "pending", "confirmed", "cancelled"
     ];
 
