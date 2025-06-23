@@ -54,13 +54,34 @@ class UserController extends Controller
      */
     public function destroy(User $user): JsonResponse
     {
+        // Vérifie si l'utilisateur courant est autorisé (lui-même ou un admin)
         if (Auth::id() !== $user->id && !Auth::user()->is_admin) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
+        // Empêche la désactivation d'un autre admin (sauf lui-même)
+        if ($user->is_admin && Auth::id() !== $user->id) {
+            return response()->json(['error' => 'Cannot deactivate another admin'], 403);
+        }
+
+        // Soft delete via is_active
         $user->is_active = false;
         $user->save();
 
         return response()->json(['message' => 'User deactivated (soft delete).']);
+    }
+    /**
+     * permet a un admin de re-activer un user
+     */
+    public function reactivate(User $user): JsonResponse
+    {
+        if (!Auth::user()->is_admin) {
+            return response()->json(['error' => 'Unauthorized'], 403);
+        }
+
+        $user->is_active = true;
+        $user->save();
+
+        return response()->json(['message' => 'User reactivated successfully.']);
     }
 }
