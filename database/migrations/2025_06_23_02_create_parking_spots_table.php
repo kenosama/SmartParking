@@ -14,6 +14,7 @@ return new class extends Migration {
             $table->string('identifier'); // ex : A1, B2, C3
             $table->boolean('allow_electric_charge')->default(false);
             $table->boolean('is_available')->default(true);
+            $table->boolean('is_booked')->default(false);
             $table->boolean('per_day_only');
             $table->decimal('price_per_day',10,2)->default(99)->nullable();
             $table->decimal('price_per_hour',6,2)->default(3.5)->nullable();

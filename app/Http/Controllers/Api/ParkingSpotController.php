@@ -163,24 +163,99 @@ class ParkingSpotController extends Controller
             'note' => 'nullable|string|max:255',
         ]);
 
+        // 🔄 Applique les modifications
         $parkingSpot->update($validated);
 
-        return response()->json($parkingSpot);
+        // 🔁 Recharge les relations pour un retour complet
+        $parkingSpot->load('parking', 'user');
+
+        return response()->json([
+            'message' => 'Place mise à jour.',
+            'spot' => $parkingSpot
+        ]);
     }
 
     /**
-     * Supprime une place de parking.
+     * Supprime (désactive) une place de parking (soft delete via is_available).
      */
     public function destroy(ParkingSpot $parkingSpot)
     {
-        // 🔒 Seul le propriétaire de la place ou un admin peut supprimer une place.
+        // 🔒 Seul le propriétaire de la place ou un admin peut désactiver une place.
         if ($parkingSpot->user_id !== Auth::id() && !Auth::user()->is_admin) {
             return response()->json(['error' => 'Accès refusé.'], 403);
         }
 
-        // 🗑️ Supprime la place de la base de données.
-        $parkingSpot->delete();
+        // ⛔ Soft delete : désactive la place au lieu de la supprimer de la DB
+        $parkingSpot->is_available = false;
+        $parkingSpot->save();
 
-        return response()->json(['message' => 'Place supprimée.']);
+        return response()->json(['message' => 'Place désactivée.']);
+    }
+
+    /**
+     * Recherche dynamique de spots disponibles selon les critères :
+     * - pays (retourne les villes)
+     * - code postal (retourne parkings + spots)
+     * - id parking (retourne les spots de ce parking)
+     * - optionnel : filtre selon créneau de réservation
+     */
+    public function search(Request $request)
+    {
+        $country = $request->query('country');
+        $zip = $request->query('zip_code');
+        $parkingId = $request->query('parking_id');
+        $start = $request->query('start_datetime');
+        $end = $request->query('end_datetime');
+
+        if ($country) {
+            $cities = \App\Models\Parking::where('country', $country)
+                ->distinct()
+                ->pluck('city');
+            return response()->json(['cities' => $cities]);
+        }
+
+        if ($zip) {
+            $parkings = \App\Models\Parking::with(['spots' => function ($q) use ($start, $end) {
+                $q->where('is_available', true)
+                    ->when($start && $end, function ($query) use ($start, $end) {
+                        $query->whereDoesntHave('reservations', function ($sub) use ($start, $end) {
+                            $sub->where('status', 'active')
+                                ->where(function ($conflict) use ($start, $end) {
+                                    $conflict->whereBetween('start_datetime', [$start, $end])
+                                             ->orWhereBetween('end_datetime', [$start, $end])
+                                             ->orWhere(function ($inside) use ($start, $end) {
+                                                 $inside->where('start_datetime', '<', $start)
+                                                        ->where('end_datetime', '>', $end);
+                                             });
+                                });
+                        });
+                    });
+            }])->where('zip_code', $zip)->get();
+
+            return response()->json(['parkings' => $parkings]);
+        }
+
+        if ($parkingId) {
+            $spots = \App\Models\ParkingSpot::where('parking_id', $parkingId)
+                ->where('is_available', true)
+                ->when($start && $end, function ($query) use ($start, $end) {
+                    $query->whereDoesntHave('reservations', function ($sub) use ($start, $end) {
+                        $sub->where('status', 'active')
+                            ->where(function ($conflict) use ($start, $end) {
+                                $conflict->whereBetween('start_datetime', [$start, $end])
+                                         ->orWhereBetween('end_datetime', [$start, $end])
+                                         ->orWhere(function ($inside) use ($start, $end) {
+                                             $inside->where('start_datetime', '<', $start)
+                                                    ->where('end_datetime', '>', $end);
+                                         });
+                            });
+                    });
+                })
+                ->get();
+
+            return response()->json(['spots' => $spots]);
+        }
+
+        return response()->json(['error' => 'Paramètre requis manquant.'], 400);
     }
 }
