@@ -44,7 +44,7 @@ This project was created as part of a job application for a **Junior Back-End De
 
 ## 📁 API Documentation Structure
 
-API docs are located in the `docs/` folder:
+API docs are located in the [`docs/`](./docs) folder:
 
 ```
 docs/
@@ -54,6 +54,8 @@ docs/
 ├── parkingspots.md
 ├── reservations.md
 ```
+
+You can [browse the docs here](./docs).
 
 ---
 
@@ -135,6 +137,24 @@ Route::prefix('v1')->group(function () {
 <details closed>
 <summary>🇫🇷 Lire en français</summary>
 
+## 📁 Structure de la documentation
+
+La documentation API se trouve dans le dossier [`docs/`](./docs) :
+
+```
+docs/
+├── authentication.md
+├── users.md
+├── parkings.md
+├── parkingspots.md
+├── reservations.md
+```
+
+Vous pouvez [parcourir les documents ici](./docs).
+```
+
+---
+
 ## 🧠 Fonctionnalités principales
 
 ### 🔐 Authentification (Sanctum)
@@ -168,21 +188,6 @@ Route::prefix('v1')->group(function () {
   - Propriétaire : jusqu’à 48h avant
   - Utilisateur : jusqu’à 24h avant
 - Passage automatique à `done` si date expirée
-
----
-
-## 📁 Structure de la documentation
-
-La documentation API se trouve dans le dossier `docs/` :
-
-```
-docs/
-├── authentication.md
-├── users.md
-├── parkings.md
-├── parkingspots.md
-├── reservations.md
-```
 
 ---
 
