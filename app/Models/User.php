@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -12,13 +11,18 @@ use App\Models\ParkingSpot;
 use App\Models\Reservation;
 use Laravel\Sanctum\HasApiTokens;
 
+/**
+ * The User model represents authenticated users of the system.
+ * Users can have different roles: admin, owner, or tenant.
+ * They can also own parkings, parking spots, and make reservations.
+ */
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
-     * The attributes that are mass assignable.
+     * Attributes that are mass assignable.
      *
      * @var list<string>
      */
@@ -33,7 +37,7 @@ class User extends Authenticatable
     ];
 
     /**
-     * The attributes that should be hidden for serialization.
+     * Attributes that should be hidden during serialization.
      *
      * @var list<string>
      */
@@ -43,7 +47,7 @@ class User extends Authenticatable
     ];
 
     /**
-     * Get the attributes that should be cast.
+     * Attribute casting definitions.
      *
      * @return array<string, string>
      */
@@ -55,44 +59,61 @@ class User extends Authenticatable
         ];
     }
 
+    /**
+     * Get the parkings owned by the user.
+     *
+     * @return HasMany<Parking>
+     */
+    public function parkings(): HasMany
+    {
+        return $this->hasMany(Parking::class);
+    }
 
-/**
- * A user can have more than one parking
- */
-public function parkings(): HasMany
-{
-    return $this->hasMany(Parking::class);
-}
+    /**
+     * Get the reservations made by the user.
+     *
+     * @return HasMany<Reservation>
+     */
+    public function reservations(): HasMany
+    {
+        return $this->hasMany(Reservation::class);
+    }
 
-/**
- * A user can make more than one reservation
- */
-
- public function reservations(): HasMany
- {
-    return $this->hasMany(Reservation::class);
- }
-
-/**
- * A user can posses multiple parking spots
- */
+    /**
+     * Get the parking spots owned by the user.
+     *
+     * @return HasMany<ParkingSpot>
+     */
     public function parkingSpots(): HasMany
     {
         return $this->hasMany(ParkingSpot::class);
     }
-/**
-* Helper methods to check user roles.
-*/
+
+    /**
+     * Check if the user has the admin role.
+     *
+     * @return bool
+     */
     public function isAdmin(): bool
     {
         return $this->is_admin;
     }
 
+    /**
+     * Check if the user has the owner role.
+     *
+     * @return bool
+     */
     public function isOwner(): bool
     {
         return $this->is_owner;
     }
 
+    /**
+     * Check if the user has the tenant role.
+     *
+     * @return bool
+     */
     public function isTenant(): bool
     {
         return $this->is_tenant;

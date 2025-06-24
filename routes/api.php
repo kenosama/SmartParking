@@ -11,74 +11,91 @@ use App\Http\Controllers\Api\UserController;
 
 /*
 |--------------------------------------------------------------------------
-| API Routes
+| API Routes - SmartParking
 |--------------------------------------------------------------------------
-| Définition des endpoints de l’API SmartParking.
-| Regroupées en sections logiques avec des commentaires clairs.
+| This file defines the API endpoints for the SmartParking application.
+| Routes are grouped into logical sections for public and authenticated access.
 |--------------------------------------------------------------------------
 */
 
 /*
 |--------------------------------------------------------------------------
-| 📌 Routes publique
+| 📌 Public Routes
+| Routes accessible without authentication.
+|--------------------------------------------------------------------------
+| 📌 Routes publiques
+| Routes accessibles sans authentification.
 |--------------------------------------------------------------------------
 */
-// Création d’un nouvel utilisateur
-Route::post('/register', [RegisteredUserController::class, 'store']);
 
-// Connexion utilisateur (génère un token Sanctum)
-Route::post('/login', [AuthenticatedSessionController::class, 'store']);
+// Register a new user
+Route::post('/register', [RegisteredUserController::class, 'store']); // 👤 Register user
 
-// Déconnexion utilisateur (nécessite d’être authentifié)
-Route::middleware('auth:sanctum')->post('/logout', [AuthenticatedSessionController::class, 'destroy']);
+// Authenticate user and issue Sanctum token
+Route::post('/login', [AuthenticatedSessionController::class, 'store']); // 🔐 Login
 
-// Recherche d'un parking spot 
-Route::get('/parking-spots/search', [ParkingSpotController::class, 'search']);
+// Logout (requires authentication)
+Route::middleware('auth:sanctum')->post('/logout', [AuthenticatedSessionController::class, 'destroy']); // 🚪 Logout
+
+// Public parking spot search (e.g., by country, city, postal code)
+Route::get('/parking-spots/search', [ParkingSpotController::class, 'search']); // 🔍 Spot search
+
 /*
+|--------------------------------------------------------------------------
+| 🔐 Protected Routes (auth:sanctum)
+| Routes that require authentication.
 |--------------------------------------------------------------------------
 | 🔐 Routes protégées (auth:sanctum)
 |--------------------------------------------------------------------------
 */
+
 Route::middleware('auth:sanctum')->group(function () {
 
-    // 🔍 Informations de l'utilisateur connecté
+    // Return authenticated user info
     Route::get('/me', function (Request $request) {
-        return $request->user();
+        return $request->user(); // 🙋‍♂️ Connected user info
     });
 
     /*
     |--------------------------------------------------------------------------
+    | 🚗 Main Resources
+    | API resource controllers for parkings, spots, and reservations
+    |--------------------------------------------------------------------------
     | 🚗 Ressources principales
     |--------------------------------------------------------------------------
     */
-    Route::apiResource('/parkings', ParkingController::class);
-    Route::apiResource('/parking-spots', ParkingSpotController::class);
-    Route::apiResource('/reservations', ReservationController::class);
+    Route::apiResource('/parkings', ParkingController::class);            // 🅿️ Parking
+    Route::apiResource('/parking-spots', ParkingSpotController::class);   // 🅿️ Parking spots
+    Route::apiResource('/reservations', ReservationController::class);    // 📅 Reservations
 
     /*
+    |--------------------------------------------------------------------------
+    | 👤 User Management
+    | Manage user data and status
     |--------------------------------------------------------------------------
     | 👤 Gestion des utilisateurs
     |--------------------------------------------------------------------------
     */
 
-    // 📄 Lire les infos d’un utilisateur (par ID ou email)
-    Route::get('/user/{identifier}', [UserController::class, 'show']);
+    // Get user info by ID or email
+    Route::get('/user/{identifier}', [UserController::class, 'show']); // 🔍 Show user
 
-    // ✏️ Modifier les infos d’un utilisateur (lui-même ou admin)
-    Route::put('/user/{identifier}', [UserController::class, 'update']);
+    // Update user info (self or admin)
+    Route::put('/user/{identifier}', [UserController::class, 'update']); // ✏️ Update user
 
-    // 🗑️ Désactiver un utilisateur (soft delete)
-    Route::delete('/user/{identifier}', [UserController::class, 'destroy']);
+    // Deactivate a user (soft delete)
+    Route::delete('/user/{identifier}', [UserController::class, 'destroy']); // 🗑️ Deactivate user
 
-    // ✅ Réactiver un utilisateur désactivé (admin uniquement)
-    Route::patch('/admin/reactivate-user/{identifier}', [UserController::class, 'reactivate']);
+    // Reactivate a deactivated user (admin only)
+    Route::patch('/admin/reactivate-user/{identifier}', [UserController::class, 'reactivate']); // ✅ Reactivate user
 });
 
 /*
 |--------------------------------------------------------------------------
-| 📦 Exemple de versionnage d’API
+| 📦 API Versioning Example
+| Uncomment to enable version-specific routing.
 |--------------------------------------------------------------------------
-| Pour activer, décommentez ce bloc et déplacez-y vos routes.
+| 📦 Exemple de versionnage d’API
 |--------------------------------------------------------------------------
 */
 

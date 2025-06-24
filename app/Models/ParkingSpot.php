@@ -2,32 +2,44 @@
 
 namespace App\Models;
 
+use App\Models\Parking;
+use App\Models\Reservation;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use App\Models\Parking;
-use App\Models\Reservation;
-use App\Models\User;
 
+/**
+ * Class ParkingSpot
+ *
+ * Represents a specific parking spot inside a parking facility.
+ */
 class ParkingSpot extends Model
 {
     use HasFactory;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<int, string>
+     */
     protected $fillable = [
-        'identifier',             // Ex: "1A", "2B"
-        'parking_id',             // Clé étrangère vers parkings
-        'user_id',                // Clé étrangère vers users (le proprio de la place)
-        'allow_electric_charge',  // booléen
-        'is_available',           // booléen
-        'per_day_only',           // booléen
-        'price_per_day',          // Prix journalier
-        'price_per_hour',         // Prix horaire
-        'note',                   // Texte libre
+        'identifier',             // e.g., "1A", "2B" - Human-readable label for the spot
+        'parking_id',             // Foreign key referencing the parking facility
+        'user_id',                // Owner of the parking spot
+        'allow_electric_charge',  // Boolean flag for electric car compatibility
+        'is_available',           // Is the spot currently reservable?
+        'per_day_only',           // Only rentable per day (not hourly)
+        'price_per_day',          // Daily price for reservation
+        'price_per_hour',         // Hourly price for reservation
+        'note',                   // Optional note or description
     ];
 
     /**
-     * Le parking auquel cette place appartient.
+     * Get the parking facility this spot belongs to.
+     *
+     * @return BelongsTo
      */
     public function parking(): BelongsTo
     {
@@ -35,7 +47,9 @@ class ParkingSpot extends Model
     }
 
     /**
-     * Le propriétaire de cette place.
+     * Get the owner of this parking spot.
+     *
+     * @return BelongsTo
      */
     public function user(): BelongsTo
     {
@@ -43,7 +57,9 @@ class ParkingSpot extends Model
     }
 
     /**
-     * Les réservations effectuées sur cette place.
+     * Get all reservations made for this spot.
+     *
+     * @return HasMany
      */
     public function reservations(): HasMany
     {

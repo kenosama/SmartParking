@@ -11,6 +11,79 @@ use Illuminate\Support\Facades\Auth;
 class ReservationController extends Controller
 {
     /**
+     * Expands parking spot identifiers from string format like "A1,A2,B1-B3" to array.
+     */
+    protected function expandSpotIdentifiers(string $identifiers): array
+    {
+        // Split identifiers by comma and trim whitespace
+        $rawIdentifiers = array_map('trim', explode(',', $identifiers));
+        $result = [];
+
+        foreach ($rawIdentifiers as $entry) {
+            // Detect ranges like "A1-A5" and expand them into [A1, A2, ..., A5]
+            if (preg_match('/^([A-Z]+)(\d+)-([A-Z]+)?(\d+)$/i', $entry, $matches)) {
+                $prefixStart = strtoupper($matches[1]);
+                $startNum = (int)$matches[2];
+                $prefixEnd = $matches[3] ? strtoupper($matches[3]) : $prefixStart;
+                $endNum = (int)$matches[4];
+
+                // Only expand if prefix matches (avoid cross-letter ranges)
+                if ($prefixStart !== $prefixEnd) {
+                    continue;
+                }
+
+                for ($i = $startNum; $i <= $endNum; $i++) {
+                    $result[] = $prefixStart . $i;
+                }
+            } else {
+                $result[] = strtoupper($entry);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Normalizes and returns an array of license plates.
+     */
+    protected function normalizeLicensePlates(string $licensePlate): array
+    {
+        // Remove non-alphanumeric chars and convert to uppercase for each plate
+        return array_map(function ($p) {
+            return strtoupper(preg_replace('/[^A-Z0-9]/i', '', $p));
+        }, explode(',', $licensePlate));
+    }
+
+    /**
+     * Validates that the reservation start and end times make sense.
+     */
+    protected function validateTimeInterval(string $reservedDate, string $startTime, string $endDate, string $endTime): bool
+    {
+        $startDateTime = \Carbon\Carbon::parse($reservedDate . ' ' . $startTime);
+        $endDateTime = \Carbon\Carbon::parse($endDate . ' ' . $endTime);
+        return $endDateTime->greaterThan($startDateTime);
+    }
+
+    /**
+     * Checks if a reservation overlaps with an existing one for the same spot and time.
+     * Optionally exclude a reservation ID (for update).
+     */
+    protected function hasReservationConflict(int $spotId, \Carbon\Carbon $startDateTime, \Carbon\Carbon $endDateTime, ?int $excludeId = null): bool
+    {
+        $query = \App\Models\Reservation::where('parking_spot_id', $spotId)
+            ->where(function ($q) use ($startDateTime, $endDateTime) {
+                $q->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', start_time), '%Y-%m-%d %H:%i:%s') < ?", [$endDateTime])
+                  ->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', end_time), '%Y-%m-%d %H:%i:%s') > ?", [$startDateTime]);
+            })
+            ->whereIn('status', ['active']);
+
+        if ($excludeId !== null) {
+            $query->where('id', '<>', $excludeId);
+        }
+
+        return $query->exists();
+    }
+    /**
      * Displays all reservations
      */
     public function index()
@@ -38,42 +111,15 @@ class ReservationController extends Controller
             'license_plate' => 'required|string' // comma-separated plates
         ]);
 
-        // Additional logic check to ensure start is before end (both date and time)
-        $startDateTime = Carbon::parse($validated['reserved_date'] . ' ' . $validated['start_time']);
-        $endDateTime = Carbon::parse(($validated['end_date'] ?? $validated['reserved_date']) . ' ' . $validated['end_time']);
-
-        if ($endDateTime->lessThanOrEqualTo($startDateTime)) {
+        // Validate that the reservation interval is logical (start < end)
+        $endDate = $validated['end_date'] ?? $validated['reserved_date'];
+        if (!$this->validateTimeInterval($validated['reserved_date'], $validated['start_time'], $endDate, $validated['end_time'])) {
             return response()->json(['error' => 'End time must be after start time.'], 422);
         }
 
-        // Split identifiers by comma to support A1,A2,B1-B3,B5 etc.
-        $rawIdentifiers = array_map('trim', explode(',', $validated['parking_spot_identifiers']));
-        $identifiers = [];
-
-        // Detect ranges like "A1-A5" and expand them into [A1, A2, ..., A5]
-        foreach ($rawIdentifiers as $entry) {
-            if (preg_match('/^([A-Z]+)(\d+)-([A-Z]+)?(\d+)$/i', $entry, $matches)) {
-                $prefixStart = strtoupper($matches[1]);
-                $startNum = (int)$matches[2];
-                $prefixEnd = $matches[3] ? strtoupper($matches[3]) : $prefixStart;
-                $endNum = (int)$matches[4];
-
-                if ($prefixStart !== $prefixEnd) {
-                    continue; // ignore cross-letter ranges
-                }
-
-                for ($i = $startNum; $i <= $endNum; $i++) {
-                    $identifiers[] = $prefixStart . $i;
-                }
-            } else {
-                $identifiers[] = strtoupper($entry);
-            }
-        }
-
-        // Clean license plates (remove spaces/symbols and convert to uppercase)
-        $plates = array_map(function ($p) {
-            return strtoupper(preg_replace('/[^A-Z0-9]/i', '', $p));
-        }, explode(',', $validated['license_plate']));
+        // Parse spot identifiers and license plates using helper methods
+        $identifiers = $this->expandSpotIdentifiers($validated['parking_spot_identifiers']);
+        $plates = $this->normalizeLicensePlates($validated['license_plate']);
 
         // Ensure each spot has a corresponding license plate
         if (count($identifiers) !== count($plates)) {
@@ -97,7 +143,9 @@ class ReservationController extends Controller
         }
 
         $reservations = [];
+        $adjustment_message = null;
 
+        // Process each spot for reservation creation
         foreach ($parkingSpots as $index => $spot) {
             // Determine if spot uses per-day-only reservation
             $perDayOnly = $spot->per_day_only;
@@ -110,26 +158,10 @@ class ReservationController extends Controller
             } else {
                 $startDateTime = Carbon::parse($validated['reserved_date'] . ' ' . $validated['start_time']);
                 $endDateTime = Carbon::parse(($validated['end_date'] ?? $validated['reserved_date']) . ' ' . $validated['end_time']);
-                $adjustment_message = null;
             }
 
-            // Check for reservation conflicts for each requested spot using datetime logic
-            $conflict = \App\Models\Reservation::where('parking_spot_id', $spot->id)
-                ->where(function ($query) use ($startDateTime, $endDateTime) {
-                    $query->where(function ($q) use ($startDateTime, $endDateTime) {
-                        $q->where('reserved_date', '<=', $endDateTime->toDateString())
-                          ->where(function ($q2) use ($startDateTime, $endDateTime) {
-                              $q2->where(function ($q3) use ($startDateTime, $endDateTime) {
-                                  $q3->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', start_time), '%Y-%m-%d %H:%i:%s') < ?", [$endDateTime])
-                                     ->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', end_time), '%Y-%m-%d %H:%i:%s') > ?", [$startDateTime]);
-                              });
-                          });
-                    });
-                })
-                ->whereIn('status', ['active'])
-                ->exists();
-
-            if ($conflict) {
+            // Check for reservation conflicts for each requested spot using helper
+            if ($this->hasReservationConflict($spot->id, $startDateTime, $endDateTime)) {
                 return response()->json([
                     'error' => "Spot {$spot->identifier} is already reserved for the selected time."
                 ], 409);
@@ -183,11 +215,12 @@ class ReservationController extends Controller
         /** @var \App\Models\User $currentUser */
         $currentUser = Auth::user();
 
+        // Only allow admins or the reservation owner to update
         if (!$currentUser->is_admin && $currentUser->id !== $reservation->user_id) {
             return response()->json(['error' => 'Unauthorized to update this reservation.'], 403);
         }
 
-        // New validation for multi-spot/plate update
+        // Validate incoming data for update
         $validated = $request->validate([
             'user_id' => 'sometimes|required|exists:users,id',
             'parking_id' => 'sometimes|required|exists:parkings,id',
@@ -213,39 +246,17 @@ class ReservationController extends Controller
         $spot_identifiers_str = $validated['parking_spot_identifiers'] ?? $reservation->parkingSpot->identifier;
         $license_plate_str = $validated['license_plate'] ?? $reservation->license_plate;
 
-        // Validate interval
+        // Validate interval using helper
         if ($reserved_date && $start_time && $end_time) {
-            $startDateTime = \Carbon\Carbon::parse($reserved_date . ' ' . $start_time);
-            $endDateTime = \Carbon\Carbon::parse(($end_date ?? $reserved_date) . ' ' . $end_time);
-            if ($endDateTime->lessThanOrEqualTo($startDateTime)) {
+            $intervalEndDate = $end_date ?? $reserved_date;
+            if (!$this->validateTimeInterval($reserved_date, $start_time, $intervalEndDate, $end_time)) {
                 return response()->json(['error' => 'End time must be after start time.'], 422);
             }
         }
 
-        // Parse spot identifiers (expand ranges)
-        $rawIdentifiers = array_map('trim', explode(',', $spot_identifiers_str));
-        $identifiers = [];
-        foreach ($rawIdentifiers as $entry) {
-            if (preg_match('/^([A-Z]+)(\d+)-([A-Z]+)?(\d+)$/i', $entry, $matches)) {
-                $prefixStart = strtoupper($matches[1]);
-                $startNum = (int)$matches[2];
-                $prefixEnd = $matches[3] ? strtoupper($matches[3]) : $prefixStart;
-                $endNum = (int)$matches[4];
-                if ($prefixStart !== $prefixEnd) {
-                    continue;
-                }
-                for ($i = $startNum; $i <= $endNum; $i++) {
-                    $identifiers[] = $prefixStart . $i;
-                }
-            } else {
-                $identifiers[] = strtoupper($entry);
-            }
-        }
-
-        // Normalize and split plates
-        $plates = array_map(function ($p) {
-            return strtoupper(preg_replace('/[^A-Z0-9]/i', '', $p));
-        }, explode(',', $license_plate_str));
+        // Parse spot identifiers and license plates using helpers
+        $identifiers = $this->expandSpotIdentifiers($spot_identifiers_str);
+        $plates = $this->normalizeLicensePlates($license_plate_str);
 
         // Ensure each spot has a corresponding license plate
         if (count($identifiers) !== count($plates)) {
@@ -268,7 +279,7 @@ class ReservationController extends Controller
             ], 422);
         }
 
-        // Map identifiers to ParkingSpot models
+        // Map identifiers to ParkingSpot models for lookup
         $spotMap = [];
         foreach ($parkingSpots as $spot) {
             $spotMap[$spot->identifier] = $spot;
@@ -278,7 +289,6 @@ class ReservationController extends Controller
         $current_identifier = $reservation->parkingSpot->identifier;
         $update_index = null;
         foreach ($identifiers as $idx => $identifier) {
-            // If updating to a different spot, allow; else, match current
             if ($identifier === $current_identifier) {
                 $update_index = $idx;
                 break;
@@ -297,7 +307,7 @@ class ReservationController extends Controller
             ], 422);
         }
 
-        // Check for reservation conflict for this spot and timing
+        // Determine reservation interval and adjust for per-day-only spots
         $perDayOnly = $target_spot->per_day_only;
         if ($perDayOnly) {
             $startDateTime = \Carbon\Carbon::parse($reserved_date)->startOfDay();
@@ -312,23 +322,15 @@ class ReservationController extends Controller
             $new_end_time = $end_time;
             $adjustment_message = null;
         }
-        $conflict = \App\Models\Reservation::where('parking_spot_id', $target_spot->id)
-            ->where('id', '<>', $reservation->id)
-            ->where(function ($query) use ($startDateTime, $endDateTime) {
-                $query->where(function ($q) use ($startDateTime, $endDateTime) {
-                    $q->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', start_time), '%Y-%m-%d %H:%i:%s') < ?", [$endDateTime])
-                      ->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', end_time), '%Y-%m-%d %H:%i:%s') > ?", [$startDateTime]);
-                });
-            })
-            ->whereIn('status', ['active'])
-            ->exists();
-        if ($conflict) {
+
+        // Check for reservation conflict using helper, excluding current reservation
+        if ($this->hasReservationConflict($target_spot->id, $startDateTime, $endDateTime, $reservation->id)) {
             return response()->json([
                 'error' => "Spot {$target_spot->identifier} is already reserved for the selected time."
             ], 409);
         }
 
-        // Update reservation
+        // Update reservation with new data
         $reservation->user_id = $user_id;
         $reservation->parking_spot_id = $target_spot->id;
         $reservation->reserved_date = $reserved_date;
@@ -457,15 +459,20 @@ class ReservationController extends Controller
     /**
      * Allows an admin to manually occupy a parking spot without assigning a user (temporary block)
      */
+    /**
+     * Allows an admin to manually occupy a parking spot without assigning a user (temporary block)
+     */
     public function manualOccupy(Request $request)
     {
         /** @var \App\Models\User $currentUser */
         $currentUser = Auth::user();
 
+        // Only admins may manually occupy a spot
         if (!$currentUser->is_admin) {
             return response()->json(['error' => 'Only admins can manually occupy spots.'], 403);
         }
 
+        // Validate request data for manual occupation
         $validated = $request->validate([
             'parking_spot_id' => 'required|exists:parking_spots,id',
             'reserved_date' => 'required|date',
@@ -476,21 +483,17 @@ class ReservationController extends Controller
 
         $spot = \App\Models\ParkingSpot::find($validated['parking_spot_id']);
 
-        // Check if spot is already occupied or reserved for the given time
+        // Validate that the reservation interval is logical (start < end)
+        $endDate = $validated['end_date'] ?? $validated['reserved_date'];
+        if (!$this->validateTimeInterval($validated['reserved_date'], $validated['start_time'], $endDate, $validated['end_time'])) {
+            return response()->json(['error' => 'End time must be after start time.'], 422);
+        }
+
+        // Check if spot is already occupied or reserved for the given time using helper
         $startDateTime = Carbon::parse($validated['reserved_date'] . ' ' . $validated['start_time']);
         $endDateTime = Carbon::parse(($validated['end_date'] ?? $validated['reserved_date']) . ' ' . $validated['end_time']);
 
-        $conflict = \App\Models\Reservation::where('parking_spot_id', $spot->id)
-            ->where(function ($query) use ($startDateTime, $endDateTime) {
-                $query->where(function ($q) use ($startDateTime, $endDateTime) {
-                    $q->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', start_time), '%Y-%m-%d %H:%i:%s') < ?", [$endDateTime])
-                      ->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', end_time), '%Y-%m-%d %H:%i:%s') > ?", [$startDateTime]);
-                });
-            })
-            ->whereIn('status', ['active'])
-            ->exists();
-
-        if ($conflict) {
+        if ($this->hasReservationConflict($spot->id, $startDateTime, $endDateTime)) {
             return response()->json([
                 'error' => "Spot {$spot->identifier} is already reserved or occupied for the selected time."
             ], 409);

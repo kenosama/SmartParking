@@ -8,10 +8,20 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use App\Models\User;
 use App\Models\ParkingSpot;
 
+/**
+ * Class Reservation
+ *
+ * Represents a reservation made by a user for a parking spot.
+ */
 class Reservation extends Model
 {
     use HasFactory;
 
+    /**
+     * The attributes that are mass assignable.
+     *
+     * @var array<string>
+     */
     protected $fillable = [
         'user_id',
         'parking_spot_id',
@@ -20,11 +30,13 @@ class Reservation extends Model
         'start_time',
         'end_time',
         'license_plate',
-        'status', // facultatif : ex. "pending", "confirmed", "cancelled"
+        'status', // Optional: e.g., "pending", "confirmed", "cancelled"
     ];
 
     /**
-     * L'utilisateur qui a effectué cette réservation.
+     * Get the user who made the reservation.
+     *
+     * @return BelongsTo
      */
     public function user(): BelongsTo
     {
@@ -32,7 +44,9 @@ class Reservation extends Model
     }
 
     /**
-     * La place de parking réservée.
+     * Get the parking spot that was reserved.
+     *
+     * @return BelongsTo
      */
     public function parkingSpot(): BelongsTo
     {
@@ -40,10 +54,12 @@ class Reservation extends Model
     }
 
     /**
-     * (Facultatif) Le parking parent via la place.
-     * Pour accéder directement au parking depuis une réservation.
+     * (Optional) Get the parent parking through the reserved spot.
+     * Useful for direct access to the parking from the reservation.
+     *
+     * @return BelongsTo|null
      */
-    public function parking(): BelongsTo
+    public function parking(): ?BelongsTo
     {
         return $this->parkingSpot?->parking();
     }
