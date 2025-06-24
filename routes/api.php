@@ -59,7 +59,11 @@ Route::middleware('auth:sanctum')->group(function () {
     |--------------------------------------------------------------------------
     | Routes administrateur
     |--------------------------------------------------------------------------
-
+    */
+    
+    // 🔁 Réactiver un utilisateur (admin uniquement)
+    Route::patch('/admin/reactivate-user/{user}', [UserController::class, 'reactivate']);
+});
     /*
     |--------------------------------------------------------------------------
     | Routes utilisateur : lecture, mise à jour, désactivation, réactivation
@@ -75,9 +79,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // 🗑️ Désactiver (soft delete) un utilisateur (par lui-même ou par un admin)
     Route::delete('/user/{user}', [UserController::class, 'destroy']);
 
-    // 🔁 Réactiver un utilisateur (admin uniquement)
-    Route::patch('/admin/reactivate-user/{user}', [UserController::class, 'reactivate']);
-});
+
 
 /*
 |--------------------------------------------------------------------------
