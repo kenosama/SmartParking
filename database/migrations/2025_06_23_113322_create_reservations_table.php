@@ -27,6 +27,7 @@ return new class extends Migration
                 'active',
                 'cancelled_by_user',
                 'cancelled_by_owner',
+                'cancelled_by_admin',
                 'done'
             ])->default('active');
 
