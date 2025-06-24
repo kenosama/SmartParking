@@ -1,67 +1,263 @@
 # 🚗 SmartParking - Laravel Backend API
 
-SmartParking est une API Laravel conçue pour simuler un système de gestion de parkings partagés. Ce projet a été créé dans le cadre de ma candidature à un poste de **Développeur Back-End Junior** et a pour but de démontrer mes compétences avec **Laravel, MySQL, l'API RESTful et la gestion des bases de données**.
+SmartParking is a RESTful API developed with Laravel 11 to manage shared parkings, parking spots, reservations, and users (with roles).
 
-## 🎯 Objectif
-
-Permettre aux utilisateurs de :
-- Gérer leurs parkings (ajout, consultation)
-- Réserver une place sur un parking existant
-- Visualiser les réservations (admin ou utilisateur)
+This project was created as part of a job application for a **Junior Back-End Developer** role, to demonstrate my practical skills in API development, database handling, and Laravel best practices.
 
 ---
 
-## 🚀 Installation
+## 🧠 Main Features
+
+### 🔐 Authentication (Sanctum)
+- Registration, login, logout
+- Middleware for protected routes
+- Secure session token
+
+### 👤 User Management
+- Full CRUD
+- Roles: `user` / `admin`
+- Soft delete via `is_active` field
+- Profile update (email, password…)
+- Admin can reactivate users
+
+### 🅿️ Parking Management
+- Create, read, update, delete
+- Each parking has a user owner
+
+### 📍 Parking Spot Management
+- On-the-fly creation: `A1-A5, B1, B3`
+- Search by country / zip code / parking
+- Activation / deactivation (`is_available`)
+- Belongs to a parking and an owner
+
+### 📅 Smart Reservations
+- Time slot validation
+- Multi-spot support (comma-separated)
+- Cleaned license plates stored
+- Soft delete rules:
+  - Admin: anytime
+  - Owner: up to 48h before
+  - User: up to 24h before
+- Automatic status change to done after reservation ends
+
+---
+
+## 📁 API Documentation Structure
+
+API docs are located in the `docs/` folder:
+
+```
+docs/
+├── authentication.md
+├── users.md
+├── parkings.md
+├── parkingspots.md
+├── reservations.md
+```
+
+---
+
+## 🚀 Project Installation
 
 ```bash
-# Cloner le dépôt
+# 1. Clone the repository
+git clone https://github.com/your-name/smartparking.git
+cd smartparking
+
+# 2. Install dependencies
+composer install
+
+# 3. Set up environment
+cp .env.example .env
+php artisan key:generate
+
+# 4. Configure your database in the .env file, then run:
+php artisan migrate:fresh --seed
+
+# 5. Start the local server
+php artisan serve
+```
+
+---
+
+## 📦 Tech Stack
+
+- PHP 8.3+
+- Laravel 11
+- Laravel Sanctum
+- MySQL
+- Eloquent ORM
+- Postman / REST Client
+- Git + GitHub
+- VS Code (Intelephense)
+
+---
+
+## 🔭 Roadmap
+
+- [x] Sanctum authentication
+- [x] Full CRUD: User, Parking, Spot, Reservation
+- [x] Soft deletes + custom statuses
+- [x] Strong business rules on reservations
+- [x] Markdown-based API documentation
+- [x] Spot availability search/filter
+- [x] Role/delay protected actions
+- [x] API versioning ready
+- [ ] Create a visual interface for the whole site using Blade, React, or Vue.
+---
+
+## 📄 License
+
+This project is freely usable for personal or educational purposes.
+
+---
+
+## ✉️ Contact
+
+If you have any questions or feedback, feel free to contact me via LinkedIn or open a GitHub issue.
+
+---
+
+## 🧪 API Versioning Preparation
+
+All current routes are in `routes/api.php`.  
+Example to enable v1 versioning easily:
+
+```php
+Route::prefix('v1')->group(function () {
+    Route::apiResource('/parkings', ParkingController::class);
+    // other routes here...
+});
+```
+
+---
+
+<details closed>
+<summary>🇫🇷 Lire en français</summary>
+
+## 🧠 Fonctionnalités principales
+
+### 🔐 Authentification (Sanctum)
+- Inscription, connexion, déconnexion
+- Middleware pour routes protégées
+- Token de session sécurisé
+
+### 👤 Gestion des utilisateurs
+- CRUD utilisateurs
+- Rôles : `user` / `admin`
+- Soft delete via champ `is_active`
+- Mise à jour profil (email, password...)
+- Réactivation possible par admin
+
+### 🅿️ Gestion des parkings
+- Création, lecture, mise à jour, suppression
+- Chaque parking a un propriétaire (user)
+
+### 📍 Gestion des places (parking spots)
+- Création dynamique des emplacements : `A1-A5, B1, B3`
+- Recherche par pays / code postal / parking
+- Activation / désactivation (`is_available`)
+- Attribution à un parking et à un propriétaire
+
+### 📅 Réservations intelligentes
+- Créneaux horaires avec validation
+- Multi-emplacements (séparés par des virgules)
+- Plaques d’immatriculation nettoyées et stockées
+- Soft delete (annulation) selon règles :
+  - Admin : à tout moment
+  - Propriétaire : jusqu’à 48h avant
+  - Utilisateur : jusqu’à 24h avant
+- Passage automatique à `done` si date expirée
+
+---
+
+## 📁 Structure de la documentation
+
+La documentation API se trouve dans le dossier `docs/` :
+
+```
+docs/
+├── authentication.md
+├── users.md
+├── parkings.md
+├── parkingspots.md
+├── reservations.md
+```
+
+---
+
+## 🚀 Installation du projet
+
+```bash
+# 1. Cloner le dépôt
 git clone https://github.com/votre-nom/smartparking.git
 cd smartparking
 
-# Installer les dépendances
+# 2. Installer les dépendances
 composer install
 
-# Copier le fichier d'environnement
+# 3. Configurer l’environnement
 cp .env.example .env
-
-# Générer la clé d'application
 php artisan key:generate
 
-# Configurer la base de données dans .env
+# 4. Définir la base de données dans .env
 # Puis exécuter les migrations
-php artisan migrate --seed
+php artisan migrate:fresh --seed
 
-# Lancer le serveur local
+# 5. Lancer le serveur local
 php artisan serve
 ```
-🗺️ Roadmap
-	•	Initialiser le projet Laravel
-	•	Configurer la base de données
-	•	Ajouter les migrations : Users, Parkings, Reservations
-	•	Définir les relations Eloquent
-	•	Implémenter l’authentification (Laravel Breeze ou Sanctum)
-	•	Créer les routes API (REST)
-	•	Tester la création de parkings
-	•	Gérer les réservations avec validation
-	•	Créer un système de rôles (user / admin)
-	•	Créer des seeders pour tests
-	•	Ajouter des tests unitaires de base
-	•	Documenter l’API avec Postman ou Swagger
-	•	Déployer sur un environnement distant (facultatif)
 
-📦 Stack technique
-	•	PHP 8+
-	•	Laravel 11
-	•	MySQL
-	•	Eloquent ORM
-	•	Laravel Sanctum (API auth)
-	•	Git + GitHub
-	•	Postman (tests d’API)
+---
 
-📄 Licence
+## 📦 Stack technique
 
-    Ce projet est open source et libre d’utilisation à des fins d’apprentissage.
+- PHP 8.3+
+- Laravel 11
+- Laravel Sanctum
+- MySQL
+- Eloquent ORM
+- Postman / REST Client
+- Git + GitHub
+- VS Code (Intelephense)
 
-✉️ Contact
+---
 
-Tu peux me contacter via LinkedIn ou ouvrir une issue sur ce dépôt.
+## 🔭 Roadmap réalisée
+
+- [x] Authentification Sanctum
+- [x] Gestion CRUD des entités : User, Parking, Spot, Réservation
+- [x] Soft deletes + statuts personnalisés
+- [x] Règles métiers fortes sur réservations
+- [x] Documentation en fichiers Markdown
+- [x] Recherche et filtrage de spots disponibles
+- [x] Protection des actions sensibles (rôles, délais)
+- [x] Préparation au versionnement API
+- [ ] Créer une interface visuelle du site via Blade, React ou Vue.
+
+---
+
+## 📄 Licence
+
+Ce projet est librement utilisable à des fins personnelles ou éducatives.
+
+---
+
+## ✉️ Contact
+
+Si vous avez des questions ou remarques, n’hésitez pas à me contacter via LinkedIn ou à ouvrir une issue GitHub.
+
+---
+
+## 🧪 Préparation au versionnement futur
+
+Toutes les routes actuelles sont centralisées dans `routes/api.php`.  
+Voici un exemple pour activer facilement une version v1 :
+
+```php
+Route::prefix('v1')->group(function () {
+    Route::apiResource('/parkings', ParkingController::class);
+    // autres routes ici...
+});
+```
+</details>
