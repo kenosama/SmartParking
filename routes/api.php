@@ -20,7 +20,7 @@ use App\Http\Controllers\Api\UserController;
 
 /*
 |--------------------------------------------------------------------------
-| 📌 Authentification publique
+| 📌 Routes publique
 |--------------------------------------------------------------------------
 */
 // Création d’un nouvel utilisateur
@@ -32,6 +32,8 @@ Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 // Déconnexion utilisateur (nécessite d’être authentifié)
 Route::middleware('auth:sanctum')->post('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
+// Recherche d'un parking spot 
+Route::get('/parking-spots/search', [ParkingSpotController::class, 'search']);
 /*
 |--------------------------------------------------------------------------
 | 🔐 Routes protégées (auth:sanctum)
