@@ -7,7 +7,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Api\ParkingController;
 use App\Http\Controllers\Api\ParkingSpotController;
 use App\Http\Controllers\Api\ReservationController;
-use App\Http\Controllers\Controller; // Pour deleteUser
+use App\Http\Controllers\Api\UserController;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,9 +59,24 @@ Route::middleware('auth:sanctum')->group(function () {
     |--------------------------------------------------------------------------
     | Routes administrateur
     |--------------------------------------------------------------------------
+
+    /*
+    |--------------------------------------------------------------------------
+    | Routes utilisateur : lecture, mise à jour, désactivation, réactivation
+    |--------------------------------------------------------------------------
     */
-    // ❌ Suppression d’un utilisateur spécifique (par ID)
-    Route::delete('/admin/delete-user/{user}', [Controller::class, 'deleteUser']);
+
+    // 📄 Lire les détails d’un utilisateur spécifique
+    Route::get('/user/{user}', [UserController::class, 'show']);
+
+    // ✏️ Mettre à jour un utilisateur (par lui-même ou par un admin)
+    Route::put('/user/{user}', [UserController::class, 'update']);
+
+    // 🗑️ Désactiver (soft delete) un utilisateur (par lui-même ou par un admin)
+    Route::delete('/user/{user}', [UserController::class, 'destroy']);
+
+    // 🔁 Réactiver un utilisateur (admin uniquement)
+    Route::patch('/admin/reactivate-user/{user}', [UserController::class, 'reactivate']);
 });
 
 /*
