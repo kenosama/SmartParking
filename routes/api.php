@@ -13,15 +13,14 @@ use App\Http\Controllers\Api\UserController;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Ce fichier définit les points d'entrée de l'API de l'application SmartParking.
-| Les routes sont divisées en sections logiques avec des commentaires explicites.
-|
+| Définition des endpoints de l’API SmartParking.
+| Regroupées en sections logiques avec des commentaires clairs.
+|--------------------------------------------------------------------------
 */
 
 /*
 |--------------------------------------------------------------------------
-| Routes publiques - Authentification
+| 📌 Authentification publique
 |--------------------------------------------------------------------------
 */
 // Création d’un nouvel utilisateur
@@ -30,25 +29,24 @@ Route::post('/register', [RegisteredUserController::class, 'store']);
 // Connexion utilisateur (génère un token Sanctum)
 Route::post('/login', [AuthenticatedSessionController::class, 'store']);
 
-// Déconnexion utilisateur (invalide le token actuel)
-Route::post('/logout', [AuthenticatedSessionController::class, 'destroy']);
-
+// Déconnexion utilisateur (nécessite d’être authentifié)
+Route::middleware('auth:sanctum')->post('/logout', [AuthenticatedSessionController::class, 'destroy']);
 
 /*
 |--------------------------------------------------------------------------
-| Routes protégées par Sanctum (nécessitent un token)
+| 🔐 Routes protégées (auth:sanctum)
 |--------------------------------------------------------------------------
 */
 Route::middleware('auth:sanctum')->group(function () {
 
-    // ✅ Récupère les infos de l'utilisateur connecté
-    Route::get('/user', function (Request $request) {
+    // 🔍 Informations de l'utilisateur connecté
+    Route::get('/me', function (Request $request) {
         return $request->user();
     });
 
     /*
     |--------------------------------------------------------------------------
-    | Ressources API : Parkings, Parking Spots, Réservations
+    | 🚗 Ressources principales
     |--------------------------------------------------------------------------
     */
     Route::apiResource('/parkings', ParkingController::class);
@@ -57,42 +55,33 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Routes administrateur
+    | 👤 Gestion des utilisateurs
     |--------------------------------------------------------------------------
     */
-    
-    // 🔁 Réactiver un utilisateur (admin uniquement)
-    Route::patch('/admin/reactivate-user/{user}', [UserController::class, 'reactivate']);
+
+    // 📄 Lire les infos d’un utilisateur (par ID ou email)
+    Route::get('/user/{identifier}', [UserController::class, 'show']);
+
+    // ✏️ Modifier les infos d’un utilisateur (lui-même ou admin)
+    Route::put('/user/{identifier}', [UserController::class, 'update']);
+
+    // 🗑️ Désactiver un utilisateur (soft delete)
+    Route::delete('/user/{identifier}', [UserController::class, 'destroy']);
+
+    // ✅ Réactiver un utilisateur désactivé (admin uniquement)
+    Route::patch('/admin/reactivate-user/{identifier}', [UserController::class, 'reactivate']);
 });
-    /*
-    |--------------------------------------------------------------------------
-    | Routes utilisateur : lecture, mise à jour, désactivation, réactivation
-    |--------------------------------------------------------------------------
-    */
-
-    // 📄 Lire les détails d’un utilisateur spécifique
-    Route::get('/user/{user}', [UserController::class, 'show']);
-
-    // ✏️ Mettre à jour un utilisateur (par lui-même ou par un admin)
-    Route::put('/user/{user}', [UserController::class, 'update']);
-
-    // 🗑️ Désactiver (soft delete) un utilisateur (par lui-même ou par un admin)
-    Route::delete('/user/{user}', [UserController::class, 'destroy']);
-
-
 
 /*
 |--------------------------------------------------------------------------
-| Example de versionnement de l’API (v1)
+| 📦 Exemple de versionnage d’API
 |--------------------------------------------------------------------------
-|
-| Pour activer, décommentez et placez les routes à l'intérieur du groupe.
-|
+| Pour activer, décommentez ce bloc et déplacez-y vos routes.
+|--------------------------------------------------------------------------
 */
 
 // Route::prefix('v1')->group(function () {
-//     // Exemples de routes versionnées
-//     // Route::apiResource('/parkings', ParkingController::class);
-//     // Route::apiResource('/parking-spots', ParkingSpotController::class);
-//     // Route::apiResource('/reservations', ReservationController::class);
+//     Route::apiResource('/parkings', ParkingController::class);
+//     Route::apiResource('/parking-spots', ParkingSpotController::class);
+//     Route::apiResource('/reservations', ReservationController::class);
 // });
