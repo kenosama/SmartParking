@@ -4,28 +4,24 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ParkingSpot;
+use App\Models\Reservation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class ParkingSpotController extends Controller
 {
-    /**
-     * Liste tous les spots de l'utilisateur connecté.
-     */
     public function index()
     {
-        // 🔍 Récupère uniquement les spots créés par l'utilisateur connecté.
-        // Chaque place est reliée à un parking (relation belongsTo).
+        // 🔍 Retrieves only the spots created by the authenticated user.
+        // Each spot is related to a parking (belongsTo relationship).
         $spots = ParkingSpot::where('user_id', Auth::id())->with('parking')->get();
         return response()->json($spots);
     }
 
-    /**
-     * Crée une nouvelle place de parking.
-     */
     public function store(Request $request)
     {
-        // ✅ Valide les données envoyées.
+        // ✅ Validate the submitted data.
         $validated = $request->validate([
             'identifiers' => 'required|string', // Ex: "A1-A5,B1,B2-B3"
             'parking_id' => 'required|exists:parkings,id',
@@ -40,19 +36,22 @@ class ParkingSpotController extends Controller
         $parking = \App\Models\Parking::findOrFail($validated['parking_id']);
         $existingCount = $parking->spots()->count();
 
-        // 📦 Gère les identifiants multiples et les plages (ex: A1-A5, B1-B2, C3)
+        // If the parking is inactive, newly created spots will be marked as unavailable
+        $defaultAvailability = $parking->is_active ? $request->boolean('is_available', true) : false;
+
+        // 📦 Handles multiple identifiers and ranges (e.g., A1-A5, B1-B2, C3)
         $input = $request->input('identifiers');
         $identifiers = collect(explode(',', $input))
             ->flatMap(function ($item) {
                 $item = trim($item);
                 if (preg_match('/^([A-Z])(\d+)-([A-Z])(\d+)$/i', $item, $m) && $m[1] === $m[3]) {
-                    // Plage même lettre : A1-A5
+                    // Range with same letter: A1-A5
                     $prefix = strtoupper($m[1]);
                     $start = intval($m[2]);
                     $end = intval($m[4]);
                     return collect(range($start, $end))->map(fn($n) => $prefix . $n);
                 } elseif (preg_match('/^(\d+)-(\d+)$/', $item, $m)) {
-                    // Plage numérique : 101-105
+                    // Numeric range: 101-105
                     return collect(range(intval($m[1]), intval($m[2])));
                 } else {
                     return [$item];
@@ -61,12 +60,12 @@ class ParkingSpotController extends Controller
             ->map(fn($id) => strtoupper(trim($id)))
             ->unique();
 
-        // 🚨 Vérifie si ça dépasse la capacité
+        // 🚨 Check if the capacity is exceeded
         if ($existingCount + $identifiers->count() > $parking->total_capacity) {
             return response()->json(['error' => 'Trop de places par rapport à la capacité.'], 400);
         }
 
-        // 🎯 Vérifie les doublons dans la DB
+        // 🎯 Check for duplicates in the database
         $existing = $parking->spots()
             ->whereIn('identifier', $identifiers)
             ->pluck('identifier')
@@ -77,7 +76,7 @@ class ParkingSpotController extends Controller
             return response()->json(['error' => 'Les identifiants suivants existent déjà : ' . implode(', ', $existing)], 409);
         }
 
-        // 🧱 Crée les nouvelles places
+        // 🧱 Create new parking spots
         $created = [];
         foreach ($identifiers as $identifier) {
             $spot = ParkingSpot::create([
@@ -85,7 +84,7 @@ class ParkingSpotController extends Controller
                 'parking_id' => $validated['parking_id'],
                 'user_id' => Auth::id(),
                 'allow_electric_charge' => $request->boolean('allow_electric_charge', false),
-                'is_available' => $request->boolean('is_available', true),
+                'is_available' => $defaultAvailability,
                 'per_day_only' => $request->boolean('per_day_only', false),
                 'price_per_day' => $validated['price_per_day'] ?? null,
                 'price_per_hour' => $validated['price_per_hour'] ?? null,
@@ -130,30 +129,24 @@ class ParkingSpotController extends Controller
         ], 201);
     }
 
-    /**
-     * Affiche une seule place de parking.
-     */
     public function show(ParkingSpot $parkingSpot)
     {
-        // 🔍 Affiche les détails de la place de parking, avec les relations vers le parking et le propriétaire.
-        // La méthode load() charge les relations définies dans le modèle ParkingSpot.
+        // 🔍 Display the details of a specific parking spot, with parking and owner relations.
+        // The load() method loads the relationships defined in the ParkingSpot model.
         return response()->json([
             'spot' => $parkingSpot->load('parking', 'user'),
             'proprietaire' => $parkingSpot->user->only(['id', 'name', 'email']),
         ]);
     }
 
-    /**
-     * Met à jour une place de parking.
-     */
     public function update(Request $request, ParkingSpot $parkingSpot)
     {
-        // 🔒 Seul le propriétaire de la place ou un administrateur peut modifier une place.
+        // 🔒 Only the spot owner or an admin can update a spot.
         if ($parkingSpot->user_id !== Auth::id() && !Auth::user()->is_admin) {
             return response()->json(['error' => 'Accès refusé.'], 403);
         }
 
-        // ✅ Valide les modifications possibles sur une place existante.
+        // ✅ Validate the allowed updates for a parking spot.
         $validated = $request->validate([
             'allow_electric_charge' => 'boolean',
             'is_available' => 'boolean',
@@ -163,10 +156,10 @@ class ParkingSpotController extends Controller
             'note' => 'nullable|string|max:255',
         ]);
 
-        // 🔄 Applique les modifications
+        // 🔄 Apply updates
         $parkingSpot->update($validated);
 
-        // 🔁 Recharge les relations pour un retour complet
+        // 🔁 Reload related models for complete response
         $parkingSpot->load('parking', 'user');
 
         return response()->json([
@@ -175,17 +168,14 @@ class ParkingSpotController extends Controller
         ]);
     }
 
-    /**
-     * Supprime (désactive) une place de parking (soft delete via is_available).
-     */
     public function destroy(ParkingSpot $parkingSpot)
     {
-        // 🔒 Seul le propriétaire de la place ou un admin peut désactiver une place.
+        // 🔒 Only the spot owner or an admin can deactivate a spot.
         if ($parkingSpot->user_id !== Auth::id() && !Auth::user()->is_admin) {
             return response()->json(['error' => 'Accès refusé.'], 403);
         }
 
-        // ⛔ Soft delete : désactive la place au lieu de la supprimer de la DB
+        // ⛔ Soft delete: mark spot as unavailable instead of removing from DB
         $parkingSpot->is_available = false;
         $parkingSpot->save();
 
@@ -193,11 +183,11 @@ class ParkingSpotController extends Controller
     }
 
     /**
-     * Recherche dynamique de spots disponibles selon les critères :
-     * - pays (retourne les villes)
-     * - code postal (retourne parkings + spots)
-     * - id parking (retourne les spots de ce parking)
-     * - optionnel : filtre selon créneau de réservation
+     * Dynamic search for available spots based on:
+     * - country (returns cities)
+     * - postal code (returns parkings + spots)
+     * - parking ID (returns spots from that parking)
+     * - optionally: availability check with date range
      */
     public function search(Request $request)
     {
@@ -208,6 +198,7 @@ class ParkingSpotController extends Controller
         $end = $request->query('end_datetime');
 
         if ($country) {
+            // Return all distinct cities within the specified country
             $cities = \App\Models\Parking::where('country', $country)
                 ->distinct()
                 ->pluck('city');
@@ -215,6 +206,7 @@ class ParkingSpotController extends Controller
         }
 
         if ($zip) {
+            // Return active parkings and their available spots for given zip
             $parkings = \App\Models\Parking::with(['spots' => function ($q) use ($start, $end) {
                 $q->where('is_available', true)
                     ->when($start && $end, function ($query) use ($start, $end) {
@@ -230,13 +222,20 @@ class ParkingSpotController extends Controller
                                 });
                         });
                     });
-            }])->where('zip_code', $zip)->get();
+            }])
+                ->where('zip_code', $zip)
+                ->where('is_active', true)
+                ->get();
 
             return response()->json(['parkings' => $parkings]);
         }
 
         if ($parkingId) {
+            // Return available spots for a given parking, only if both parking and spot are active
             $spots = \App\Models\ParkingSpot::where('parking_id', $parkingId)
+                ->whereHas('parking', function ($q) {
+                    $q->where('is_active', true);
+                })
                 ->where('is_available', true)
                 ->when($start && $end, function ($query) use ($start, $end) {
                     $query->whereDoesntHave('reservations', function ($sub) use ($start, $end) {
@@ -259,3 +258,5 @@ class ParkingSpotController extends Controller
         return response()->json(['error' => 'Paramètre requis manquant.'], 400);
     }
 }
+
+

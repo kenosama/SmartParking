@@ -28,6 +28,7 @@ return new class extends Migration
                 'cancelled_by_user',
                 'cancelled_by_owner',
                 'cancelled_by_admin',
+                'manual_override',
                 'done'
             ])->default('active');
 

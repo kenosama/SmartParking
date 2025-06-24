@@ -1,6 +1,110 @@
 # 🔐 Authentication API Documentation
 
-Ce fichier détaille les différentes requêtes liées à l’authentification des utilisateurs de l’API SmartParking.
+<details open>
+<summary>🇬🇧 English Version</summary>
+
+---
+
+## 📝 Register
+
+**POST** `/api/register`
+
+**Required fields:**
+
+```json
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "email": "john@example.com",
+  "password": "secret123",
+  "password_confirmation": "secret123"
+}
+```
+
+**Success Response:**
+
+```json
+{
+  "message": "User successfully registered",
+  "token": "<TOKEN>"
+}
+```
+
+---
+
+## 🔐 Login
+
+**POST** `/api/login`
+
+**Required fields:**
+
+```json
+{
+  "email": "john@example.com",
+  "password": "secret123"
+}
+```
+
+**Success Response:**
+
+```json
+{
+  "message": "Login successful",
+  "token": "<TOKEN>",
+  "user": {
+    "id": 1,
+    "email": "john@example.com",
+    "first_name": "John",
+    "last_name": "Doe"
+  }
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "error": "Invalid credentials"
+}
+```
+
+---
+
+## 🔒 Logout
+
+**POST** `/api/logout`
+
+**Required header:**
+
+```
+Authorization: Bearer <TOKEN>
+```
+
+**Response:**
+
+```json
+{
+  "message": "User logged out"
+}
+```
+
+---
+
+## 🔐 Notes
+
+* All protected routes require a valid token in the header: `Authorization: Bearer <TOKEN>`
+* If the token is expired or revoked, the user will need to login again.
+
+---
+
+📁 Back to summary: [../README.md](../README.md)
+
+</details>
+
+---
+
+<details>
+<summary>🇫🇷 Version Française</summary>
 
 ---
 
@@ -97,3 +201,5 @@ Authorization: Bearer <TOKEN>
 ---
 
 📁 Retour au sommaire : [../README.md](../README.md)
+
+</details>

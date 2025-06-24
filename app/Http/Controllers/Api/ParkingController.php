@@ -45,6 +45,7 @@ class ParkingController extends BaseController
         ]);
 
         $validated['user_id'] = Auth::id();
+        $validated['is_active'] = true;
 
         return Parking::create($validated);
     }
@@ -56,13 +57,27 @@ class ParkingController extends BaseController
 
     public function update(Request $request, Parking $parking)
     {
-        $parking->update($request->all());
+        $validated = $request->validate([
+            'name' => 'sometimes|string|max:255',
+            'street' => 'sometimes|string',
+            'location_number' => 'sometimes|string',
+            'zip_code' => 'sometimes|string',
+            'city' => 'sometimes|string',
+            'country' => 'sometimes|string',
+            'total_capacity' => 'sometimes|integer',
+            'is_open_24h' => 'sometimes|boolean',
+            'opening_hours' => 'nullable|string|required_if:is_open_24h,false',
+            'opening_days' => 'nullable|string|required_if:is_open_24h,false|regex:/^([1-7](,[1-7])*)?$/',
+            'is_active' => 'sometimes|boolean',
+        ]);
+        $parking->update($validated);
         return $parking;
     }
 
     public function destroy(Parking $parking)
     {
-        $parking->delete();
-        return response()->noContent();
+        $parking->is_active = false;
+        $parking->save();
+        return response()->json(['message' => 'Parking soft-deleted (is_active = false)']);
     }
 }
