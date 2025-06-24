@@ -83,7 +83,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| Exemple de versionnement de l’API (v1)
+| Example de versionnement de l’API (v1)
 |--------------------------------------------------------------------------
 |
 | Pour activer, décommentez et placez les routes à l'intérieur du groupe.
