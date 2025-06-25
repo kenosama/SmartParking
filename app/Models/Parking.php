@@ -38,6 +38,7 @@ class Parking extends Model
         'opening_hours',    // Nullable if open 24/7
         'opening_days',     // Format: 1,2,3,...7. Nullable if open 24/7
         'user_id',
+        'is_active',
     ];
 
     /**
@@ -71,5 +72,11 @@ class Parking extends Model
     public function spots(): HasMany
     {
         return $this->hasMany(ParkingSpot::class);
+    }
+    public function coOwners()
+    {
+        return $this->belongsToMany(User::class, 'parking_owner')
+            ->withPivot('role')
+            ->withTimestamps();
     }
 }

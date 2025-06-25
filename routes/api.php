@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\ParkingController;
 use App\Http\Controllers\Api\ParkingSpotController;
 use App\Http\Controllers\Api\ReservationController;
 use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\ParkingOwnerController;
 
 /*
 |--------------------------------------------------------------------------
@@ -68,6 +69,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('/parking-spots', ParkingSpotController::class);   // 🅿️ Parking spots
     Route::apiResource('/reservations', ReservationController::class);    // 📅 Reservations
 
+    // 👥 Co-owners management
+    Route::get('/parkings/{parking}/co-owners', [ParkingOwnerController::class, 'index']); // 👥 List co-owners
+    Route::post('/parkings/{parking}/co-owners', [ParkingOwnerController::class, 'store']); // ➕ Add co-owners
+    Route::delete('/parkings/{parking}/co-owners', [ParkingOwnerController::class, 'destroy']); // ❌ Remove co-owner
+
     /*
     |--------------------------------------------------------------------------
     | 👤 User Management
@@ -87,7 +93,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/user/{identifier}', [UserController::class, 'destroy']); // 🗑️ Deactivate user
 
     // Reactivate a deactivated user (admin only)
-    Route::patch('/admin/reactivate-user/{identifier}', [UserController::class, 'reactivate']); // ✅ Reactivate user
+    Route::patch('user/{identifier}/reactivate', [UserController::class, 'reactivate']); // ✅ Reactivate user
 });
 
 /*

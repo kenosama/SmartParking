@@ -12,6 +12,9 @@ use App\Models\Reservation;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
+ * @mixin \Illuminate\Contracts\Auth\Authenticatable
+ */
+/**
  * The User model represents authenticated users of the system.
  * Users can have different roles: admin, owner, or tenant.
  * They can also own parkings, parking spots, and make reservations.
@@ -118,4 +121,11 @@ class User extends Authenticatable
     {
         return $this->is_tenant;
     }
+    public function coOwnedParkings()
+    {
+        return $this->belongsToMany(Parking::class, 'parking_owner')
+            ->withPivot('role')
+            ->withTimestamps();
+    }
+
 }
