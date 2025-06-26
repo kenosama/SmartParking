@@ -127,5 +127,13 @@ class User extends Authenticatable
             ->withPivot('role')
             ->withTimestamps();
     }
-
+    /**
+     * Get the parkings created by the user.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function createdParkings(): HasMany
+    {
+        return $this->hasMany(Parking::class);
+    }
 }
