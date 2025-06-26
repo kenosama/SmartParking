@@ -65,4 +65,45 @@ class ParkingSpot extends Model
     {
         return $this->hasMany(Reservation::class);
     }
+
+    /**
+     * Synchronizes the pivot table (parking_owner) entry for this spot.
+     * Should be called after changing the user_id of the spot.
+     *
+     * - Adds the new co-owner if not already present.
+     * - Removes the previous co-owner if they no longer own any spots in the parking.
+     *
+     * @return void
+     */
+    public function syncCoOwner(?int $newUserId): void
+    {
+        if (!$newUserId) {
+            return;
+        }
+
+        $parking = $this->parking()->first();
+        $currentUserId = $this->user_id;
+
+        if ($newUserId === $currentUserId) {
+            return; // No change
+        }
+
+        $this->user_id = $newUserId;
+
+        if (!$parking->coOwners()->where('user_id', $newUserId)->exists()) {
+            // Check if old owner has other spots in the same parking
+            $otherSpots = $parking->spots()
+                ->where('user_id', $currentUserId)
+                ->where('id', '!=', $this->id)
+                ->count();
+
+            if ($otherSpots === 0) {
+                // Remove old co-owner
+                $parking->coOwners()->detach($currentUserId);
+            }
+
+            // Add new co-owner
+            $parking->coOwners()->attach($newUserId, ['role' => 'co_owner']);
+        }
+    }
 }

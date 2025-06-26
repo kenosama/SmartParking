@@ -149,7 +149,7 @@ Cette section documente l’API de gestion des co-propriétaires d’un parking.
 ```json
 {
   "message": "Co-owner removed successfully."
-}
+} 
 ```
 
 </details>
