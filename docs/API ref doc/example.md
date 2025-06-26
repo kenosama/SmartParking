@@ -15,7 +15,11 @@ This documentation covers the available routes for managing **parkings** in the 
 
 - **Method**: `GET`
 - **URL**: `/api/parkings`
-- **Description**: Retrieves all active parkings created by the authenticated user.
+- **Description**: Returns a list of parkings based on the user role:
+  - Admins: all parkings in the system grouped by creator, with their co-owners.
+  - Non-admin creators: only parkings they created, including co-owners.
+  - Non-admin co-owners: only parkings they co-own, with co-owner info.
+- **Note**: This endpoint does not return parking spots to reduce data load and limit exposure.
 - **Response example**:
 ```json
 [
@@ -129,7 +133,11 @@ Cette documentation couvre les routes disponibles pour la gestion des **parkings
 
 - **Méthode** : `GET`
 - **URL** : `/api/parkings`
-- **Description** : Récupère tous les parkings actifs créés par l'utilisateur connecté.
+- **Description** : Retourne une liste de parkings selon le rôle de l'utilisateur :
+  - Admin : tous les parkings du système regroupés par créateur, avec les co-propriétaires.
+  - Utilisateur non-admin créateur : uniquement les parkings qu’il a créés, avec leurs co-propriétaires.
+  - Utilisateur non-admin co-propriétaire : uniquement les parkings dans lesquels il est co-propriétaire, avec les autres co-propriétaires.
+- **Note** : Cet endpoint ne retourne pas les places de parking pour limiter la charge et l’exposition des données.
 - **Réponse attendue** :
 ```json
 [

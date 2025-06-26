@@ -19,147 +19,190 @@ class ParkingController extends BaseController
     }
 
     /**
-     * Display a listing of all parkings including their owner and associated parking spots.
+     * Display a listing of parkings.
+     *
+     * - Admins: see all parkings grouped by creator, with co-owner info.
+     * - Non-admins:
+     *     - See parkings they created (with co-owners).
+     *     - See parkings where they are co-owners (with co-owners).
+     *
+     * @return \Illuminate\Http\JsonResponse
      */
     public function index()
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
+        $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT;
+
         if ($user->is_admin) {
-            // All parking regrouped by user.
-            $parkings = Parking::with('user', 'spots')->get();
+            $parkings = Parking::with('user', 'coOwners')->get();
 
             $grouped = $parkings->groupBy('user_id')->map(function ($userParkings) {
                 return [
-                    'user' => $userParkings->first()->user,
-                    'parkings' => $userParkings->map(function ($parking) {
-                        return [
-                            'id' => $parking->id,
-                            'name' => $parking->name,
-                            'street' => $parking->street,
-                            'location_number' => $parking->location_number,
-                            'zip_code' => $parking->zip_code,
-                            'city' => $parking->city,
-                            'country' => $parking->country,
-                            'total_capacity' => $parking->total_capacity,
-                            'is_open_24h' => $parking->is_open_24h,
-                            'opening_hours' => $parking->opening_hours,
-                            'opening_days' => $parking->opening_days,
-                            'spots' => $parking->spots,
-                        ];
-                    }),
+                    'user' => $this->formatUserInfo($userParkings->first()->user),
+                    'parkings' => $userParkings->map(fn ($parking) => $this->formatParkingWithCoOwners($parking)),
                 ];
             })->values();
 
-            $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT; // Commenter JSON_PRETTY_PRINT en production
             return response()->json($grouped, 200, [], $jsonFlags);
-        } else {
-            // Parkings of current user
-            $userParkings = $user->parkings()->with('spots')->get();
-
-            $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT; // Commenter JSON_PRETTY_PRINT en production
-            return response()->json([
-                'user' => $user,
-                'parkings' => $userParkings->map(function ($parking) {
-                    return [
-                        'id' => $parking->id,
-                        'name' => $parking->name,
-                        'street' => $parking->street,
-                        'location_number' => $parking->location_number,
-                        'zip_code' => $parking->zip_code,
-                        'city' => $parking->city,
-                        'country' => $parking->country,
-                        'total_capacity' => $parking->total_capacity,
-                        'is_open_24h' => $parking->is_open_24h,
-                        'opening_hours' => $parking->opening_hours,
-                        'opening_days' => $parking->opening_days,
-                        'spots' => $parking->spots,
-                    ];
-                }),
-            ], 200, [], $jsonFlags);
         }
+
+        $userParkings = $user->parkings()->with('coOwners')->get();
+        $coOwnedParkings = $user->coOwnedParkings()->with('coOwners')->get();
+
+        if ($userParkings->isEmpty() && $coOwnedParkings->isEmpty()) {
+            return response()->json(['error' => 'Unauthorized. You don\'t have any acces to info here.'], 403);
+        }
+
+        return response()->json([
+            'user' => $this->formatUserInfo($user),
+            'created_parkings' => $userParkings->map(fn ($parking) => $this->formatParkingWithCoOwners($parking)),
+            'co_owned_parkings' => $coOwnedParkings->map(fn ($parking) => $this->formatParkingWithCoOwners($parking)),
+        ], 200, [], $jsonFlags);
     }
 
     /**
-     * Store a newly created parking in the database.
+     * Store a new parking entry in the database.
+     *
+     * Access restricted to:
+     * - Admins
+     * - Active owners (is_owner = true, is_active = true)
+     *
+     * @param \Illuminate\Http\Request $request
+     * @return \Illuminate\Http\JsonResponse|\App\Models\Parking
      */
     public function store(Request $request)
     {
-        // Process opening days and hours (handle ranges and 24h logic)
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Authorization check: Only admins or active owners can create a parking
+        if (! $user->is_admin && (! $user->is_owner || ! $user->is_active)) {
+            return response()->json(['error' => 'Unauthorized. only admins or active owners can create a parking'], 403);
+        }
+
+        // Input processing: handle opening days/hours normalization
         $this->processOpeningDaysAndHours($request);
 
-        // Validate request inputs
+        // Input validation
         $validated = $request->validate($this->validationRules());
 
-        // Assign current authenticated user and default active status
+        // Processing: assign creator and set active by default
         $validated['user_id'] = Auth::id();
         $validated['is_active'] = true;
 
-        // Create and return new parking record
-        return Parking::create($validated);
+        // Eloquent operation: create parking
+        $parking = Parking::create($validated);
+
+        // Response: return the created parking
+        return $parking;
     }
 
     /**
-     * Display the specified parking with its related user and parking spots.
+     * Display details of a specific parking.
+     *
+     * Access allowed for:
+     * - Admins
+     * - Creator of the parking
+     * - Co-owners of the parking
+     *
+     * @param \App\Models\Parking $parking
+     * @return \Illuminate\Http\JsonResponse|\App\Models\Parking
      */
     public function show(Parking $parking)
     {
-        return $parking->load('user', 'spots');
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Authorization check: Only admins, the creator, or co-owners can view details
+        if (
+            ! $user->is_admin &&
+            $parking->user_id !== $user->id &&
+            ! $parking->coOwners()->where('user_id', $user->id)->exists()
+        ) {
+            return response()->json(['error' => 'Unauthorized.'], 403);
+        }
+
+        // Eloquent operation: Load related coOwners
+        $parking->load('coOwners');
+
+        // Response: return formatted parking with co-owners (same as index)
+        return response()->json($this->formatParkingWithCoOwners($parking));
     }
 
     /**
-     * Update the specified parking in the database.
+     * Update a specific parking.
+     *
+     * Only admins and the creator of the parking are allowed to update.
+     * - If is_active is set to false: disables the parking and all its spots.
+     * - If is_active is set to true: re-enables spots depending on user's role.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param \App\Models\Parking $parking
+     * @return \Illuminate\Http\JsonResponse|\App\Models\Parking
      */
     public function update(Request $request, Parking $parking)
     {
-        // Process opening days and hours (handle ranges and 24h logic)
+        // Input processing: normalize opening days/hours if present
         $this->processOpeningDaysAndHours($request);
 
-        // Validate input for partial update
+        // Input validation for partial update
         $validated = $request->validate($this->validationRules(true));
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        // Seuls les admins ou les propriétaires peuvent modifier ce parking
+        // Authorization check: Only admins or the creator can update
         if (! $user->is_admin && $parking->user_id !== $user->id) {
             return response()->json(['error' => 'Unauthorized.'], 403);
         }
 
-        // Apply updates to the parking model
+        // Eloquent operation: update model attributes
         $parking->update($validated);
+
+        // Conditional business logic: handle activation/deactivation
         if (isset($validated['is_active']) && $validated['is_active'] === false) {
+            // If disabling parking, also disable all spots
             $this->deactivateParkingAndSpots($parking);
         }
         elseif (isset($validated['is_active']) && $validated['is_active'] === true) {
-            /** @var \App\Models\User $user */
-            $user = Auth::user();
-
-            if ($user->is_admin) {
-                $parking->spots()->update(['is_available' => true]);
-            } elseif ($parking->user_id === $user->id) {
+            // If enabling parking, enable all spots (admin or creator only)
+            if ($user->is_admin || $parking->user_id === $user->id) {
                 $parking->spots()->update(['is_available' => true]);
             }
         }
+
+        // Response: return updated parking
         return $parking;
     }
 
     /**
-     * Soft delete the specified parking by setting is_active to false.
+     * Soft-delete a parking by setting is_active to false.
+     *
+     * Access allowed for:
+     * - Admins
+     * - Creator of the parking
+     *
+     * Also disables all linked parking spots.
+     *
+     * @param \App\Models\Parking $parking
+     * @return \Illuminate\Http\JsonResponse
      */
     public function destroy(Parking $parking)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        // Only admin or owners can softdelete the parking.
+        // Authorization check: Only admin or creator can soft-delete
         if (! $user->is_admin && $parking->user_id !== $user->id) {
             return response()->json(['error' => 'Unauthorized.'], 403);
         }
 
+        // Business logic: deactivate parking and all its spots
         $this->deactivateParkingAndSpots($parking);
 
+        // Response: confirmation message
         return response()->json(['message' => 'Parking soft-deleted (is_active = false)']);
     }
 
@@ -244,5 +287,41 @@ class ParkingController extends BaseController
 
         // Rendre tous les spots liés indisponibles
         $parking->spots()->update(['is_available' => false]);
+    }
+
+    /**
+     * Format user basic identity.
+     */
+    private function formatUserInfo(\App\Models\User $user): array
+    {
+        return [
+            'full_name' => trim($user->first_name . ' ' . $user->last_name),
+            'email' => $user->email,
+        ];
+    }
+
+    /**
+     * Format a parking and its co-owners for output.
+     */
+    private function formatParkingWithCoOwners(Parking $parking): array
+    {
+        return [
+            'id' => $parking->id,
+            'name' => $parking->name,
+            'street' => $parking->street,
+            'location_number' => $parking->location_number,
+            'zip_code' => $parking->zip_code,
+            'city' => $parking->city,
+            'country' => $parking->country,
+            'total_capacity' => $parking->total_capacity,
+            'is_open_24h' => $parking->is_open_24h,
+            'opening_hours' => $parking->opening_hours,
+            'opening_days' => $parking->opening_days,
+            'is_active' => $parking->is_active,
+            'co_owners' => $parking->coOwners->map(fn ($owner) => [
+                'full_name' => trim($owner->first_name . ' ' . $owner->last_name),
+                'email' => $owner->email,
+            ]),
+        ];
     }
 }
