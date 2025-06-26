@@ -168,7 +168,24 @@ class ParkingSpotController extends Controller
             'price_per_hour' => 'nullable|numeric|min:0',
             'note' => 'nullable|string|max:255',
             'user_id' => 'sometimes|exists:users,id',
+            'identifier' => 'sometimes|string',
         ]);
+
+        // Step 3.1: Prevent updating to an identifier that already exists in the same parking
+        if ($request->filled('identifier')) {
+            $newIdentifier = strtoupper(trim($request->input('identifier')));
+
+            $duplicateExists = \App\Models\ParkingSpot::where('parking_id', $parkingSpot->parking_id)
+                ->where('id', '!=', $parkingSpot->id)
+                ->whereRaw('UPPER(identifier) = ?', [$newIdentifier])
+                ->exists();
+
+            if ($duplicateExists) {
+                return response()->json(['error' => "Identifier '{$newIdentifier}' is already used in this parking."], 409);
+            }
+
+            $validated['identifier'] = $newIdentifier;
+        }
 
         // Step 4.1: Allow changing user_id only for admin or parking owner.
         if ($request->filled('user_id') && $request->input('user_id') !== $parkingSpot->user_id) {
