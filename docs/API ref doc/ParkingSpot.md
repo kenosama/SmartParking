@@ -1,137 +1,162 @@
-# 📄 API Documentation - Parking Spots
+
+
+# 📘 API Documentation – Parking Spots
 
 <details open>
-<summary>🇬🇧 English version</summary>
+<summary>🇬🇧 English Version</summary>
 
-## Base URL
+This documentation covers all available routes for managing **parking spots** in the Laravel API.
 
-```
-/api/parking-spots
-```
+---
 
-## 🔍 List User's Parking Spots
+## 🔐 All routes require authentication via Bearer token.
 
-**GET** `/api/parking-spots`
+---
 
-### Description
+## 🔄 List Parking Spots
 
-Returns all parking spots created by the authenticated user, including their associated parking details.
+- **Method**: `GET`
+- **URL**: `/api/parking-spots`
+- **Access**:
+  - Admin: all spots grouped by parking and owners.
+  - Parking creator: all spots in their parkings.
+  - Co-owner: only spots assigned to the authenticated user.
+  - Others: `403 Unauthorized`
+- **Response**: List of parkings with grouped spot ownership and details.
 
-### Response
-
+**Response example**:
 ```json
 [
   {
-    "id": 1,
-    "identifier": "A1",
     "parking": {
-      "id": 3,
-      "name": "Parking Central"
-    }
+      "id": 7,
+      "name": "Example Parking",
+      "address": "123 Street, City, Country",
+      "total_capacity": 50,
+      "is_open_24h": true,
+      "opening_hours": "00:00-23:59",
+      "opening_days": "1,2,3,4,5,6,7",
+      "owner": "Company XYZ",
+      "owner_email": "owner@example.com",
+      "is_active": true
+    },
+    "owners": [
+      {
+        "owner": "Jane Doe",
+        "owner_email": "jane@example.com",
+        "spots": [
+          {
+            "id": 1,
+            "identifier": "A1",
+            "allow_electric_charge": true,
+            "is_available": true,
+            "is_booked": false,
+            "per_day_only": false,
+            "price_per_day": "30.00",
+            "price_per_hour": "5.00",
+            "note": "Near entrance"
+          }
+        ]
+      }
+    ]
   }
 ]
 ```
 
 ---
 
-## ➕ Create New Parking Spots
+## ➕ Create Parking Spots
 
-**POST** `/api/parking-spots`
-
-### Parameters
-
-| Field                  | Type    | Required | Description                                                         |
-|------------------------|---------|----------|---------------------------------------------------------------------|
-| identifiers            | string  | ✅        | List of spot names or ranges (e.g. "A1-A5,B1,B2-B3")                |
-| parking_id             | integer | ✅        | ID of the existing parking                                          |
-| allow_electric_charge  | boolean | ❌        | Is electric charging available?                                     |
-| is_available           | boolean | ❌        | Is the spot available? (default: true)                              |
-| per_day_only           | boolean | ❌        | Reservation allowed only by day?                                    |
-| price_per_day          | number  | ❌        | Price per day                                                       |
-| price_per_hour         | number  | ❌        | Price per hour                                                      |
-| note                   | string  | ❌        | Informative note (max 255 characters)                               |
-
-**Note**: If the selected parking is inactive (`is_active = false`), the newly created spots will automatically be set as unavailable (`is_available = false`). This behavior is enforced regardless of provided `is_available` value. Spots can still be created in inactive parkings by admins or owners.
-
-### Response (201)
-
+- **Method**: `POST`
+- **URL**: `/api/parking-spots`
+- **Access**:
+  - Admin
+  - Parking creator or co-owner of the target parking
+- **Required fields**:
 ```json
 {
-  "parking": { ... },
-  "user": { ... },
-  "spots": [
-    {
-      "id": 12,
-      "identifier": "A1",
-      "is_available": true
-    }
-  ],
-  "count": 3
+  "parking_id": 1,
+  "identifiers": "A1-A5,B1,B2",
+  "allow_electric_charge": true,
+  "is_available": true,
+  "per_day_only": false,
+  "price_per_day": 25.00,
+  "price_per_hour": 3.50,
+  "note": "Optional comment"
 }
 ```
 
----
+- **Validation & behavior**:
+  - Identifiers can be comma-separated ranges (e.g., `A1-A5`)
+  - Fails if:
+    - parking is full
+    - spot names already exist
+    - user is not allowed
 
-## 📄 Parking Spot Details
-
-**GET** `/api/parking-spots/{id}`
-
-### Response
-
+**Success response**:
 ```json
-{
-  "spot": {
-    "id": 12,
-    "identifier": "A1",
+[
+  {
     "parking": { ... },
-    "user": { ... }
-  },
-  "proprietaire": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com"
+    "owners": [ ... ]
   }
-}
+]
 ```
+
+**Error examples**:
+- `403` – Not allowed
+- `409` – Identifiers already exist
+- `400` – Capacity exceeded
 
 ---
 
-## ✏️ Update a Parking Spot (admin or owner only)
+## 📄 Show Spot Details
 
-**PUT** `/api/parking-spots/{id}`
+- **Method**: `GET`
+- **URL**: `/api/parking-spots/{id}`
+- **Access**: Same as index
+- **Response**: Spot formatted identically to index, scoped to a single spot
 
-### Editable Fields
+---
 
-| Field                  | Type    |
-|------------------------|---------|
-| allow_electric_charge  | boolean |
-| is_available           | boolean |
-| per_day_only           | boolean |
-| price_per_day          | number  |
-| price_per_hour         | number  |
-| note                   | string  |
+## 📝 Update Spot
 
-### Response
+- **Method**: `PATCH`
+- **URL**: `/api/parking-spots/{id}`
+- **Access**:
+  - Spot owner
+  - Parking creator
+  - Co-owner of parking
+  - Admin
+- **Note**: Only admin or parking creator can reassign spot to another user.
 
+**Payload example**:
 ```json
 {
-  "message": "Spot updated.",
-  "spot": { ... }
+  "allow_electric_charge": true,
+  "is_available": false,
+  "per_day_only": true,
+  "price_per_day": 35.00,
+  "price_per_hour": 6.50,
+  "note": "Reserved for disabled access",
+  "user_id": 4
 }
 ```
 
+**Success response**: Same as show.
+
+**Error**:
+- `403` – Cannot reassign if not admin/creator
+
 ---
 
-## 🗑️ Deactivate a Spot (soft delete)
+## ❌ Deactivate Spot
 
-**DELETE** `/api/parking-spots/{id}`
+- **Method**: `DELETE`
+- **URL**: `/api/parking-spots/{id}`
+- **Behavior**: Marks `is_available = false`
 
-### Description
-
-Sets the `is_available` field to `false` instead of deleting the record.
-
-### Response
-
+**Response**:
 ```json
 {
   "message": "Spot deactivated."
@@ -140,78 +165,30 @@ Sets the `is_available` field to `false` instead of deleting the record.
 
 ---
 
-## 🔍 Dynamic Search
+## 🔍 Search Parking Spots
 
-Only spots belonging to active parkings and marked as available (`is_available = true`) will be returned. If the parking itself is inactive, its spots are never returned, even if marked as available.
-
-**GET** `/api/parking-spots/search`
-
-### Possible Parameters:
-
-* `country=France` → returns cities available in that country.
-* `zip_code=75001` → returns parkings and spots available in that zone.
-* `parking_id=1` → returns available spots in that parking.
-* Optionally: `start_datetime` and `end_datetime` to filter by time availability.
-
-### Example Responses
-
-```json
-{
-  "cities": ["Paris", "Lyon"]
-}
-```
-
-Or
-
-```json
-{
-  "parkings": [ ... ]
-}
-```
-
-Or
-
-```json
-{
-  "spots": [ ... ]
-}
-```
+- **Method**: `GET`
+- **URL**: `/api/parking-spots/search`
+- **Supported query parameters**:
+  - `country=BE` → returns zip codes
+  - `zip_code=1000` → returns parkings in that area with aggregated spot info
+  - `parking_id=7` → returns available spots for specific parking
+  - `start_datetime` + `end_datetime` (optional) → exclude already booked spots
 
 ---
 
-## Security
+### 📍 Search by Zip Code
 
-✅ Authentication is required for all routes.
-
-</details>
-
-<details>
-<summary>🇫🇷 Version française</summary>
-
-## URL de base
-
-```
-/api/parking-spots
-```
-
-## 🔍 Liste des spots de l'utilisateur
-
-**GET** `/api/parking-spots`
-
-### Description
-
-Retourne tous les emplacements créés par l'utilisateur connecté, avec les détails du parking associé.
-
-### Réponse
+Returns parkings with **aggregated** spot info.
 
 ```json
 [
   {
-    "id": 1,
-    "identifier": "A1",
-    "parking": {
-      "id": 3,
-      "name": "Parking Central"
+    "parking": { ... },
+    "Spot_info": {
+      "number_of_available_spots": 12,
+      "price_range_per_day": "from 10.00 to 50.00",
+      "price_range_hourly_tariff": "from 2.00 to 6.00"
     }
   }
 ]
@@ -219,153 +196,93 @@ Retourne tous les emplacements créés par l'utilisateur connecté, avec les dé
 
 ---
 
-## ➕ Créer de nouveaux emplacements
+### 🔎 Search by Parking ID
 
-**POST** `/api/parking-spots`
-
-### Paramètres
-
-| Champ                   | Type    | Obligatoire | Description                                           |
-| ----------------------- | ------- | ----------- | ----------------------------------------------------- |
-| identifiers             | string  | ✅           | Liste d'identifiants ou plages (ex: "A1-A5,B1,B2-B3") |
-| parking_id              | integer | ✅           | ID du parking existant                                |
-| allow_electric_charge   | boolean | ❌           | Prise électrique disponible ?                         |
-| is_available            | boolean | ❌           | Emplacement activé ? (par défaut: true)               |
-| per_day_only            | boolean | ❌           | Réservation à la journée uniquement ?                 |
-| price_per_day           | number  | ❌           | Prix par jour                                         |
-| price_per_hour          | number  | ❌           | Prix par heure                                        |
-| note                    | string  | ❌           | Note informative max 255 caractères                   |
-
-**Note** : Si le parking sélectionné est inactif (`is_active = false`), les nouveaux emplacements créés seront automatiquement marqués comme non disponibles (`is_available = false`). Ce comportement est appliqué systématiquement, quelle que soit la valeur fournie pour `is_available`. Les emplacements peuvent néanmoins être créés par un administrateur ou le propriétaire.
-
-### Réponse (201)
+Returns all available spots **with details**, ordered by price per day descending.
 
 ```json
-{
-  "parking": { ... },
-  "user": { ... },
-  "spots": [
-    {
-      "id": 12,
-      "identifier": "A1",
-      "is_available": true
-    }
-  ],
-  "count": 3
-}
-```
-
----
-
-## 📄 Détails d’un emplacement
-
-**GET** `/api/parking-spots/{id}`
-
-### Réponse
-
-```json
-{
-  "spot": {
-    "id": 12,
-    "identifier": "A1",
+[
+  {
     "parking": { ... },
-    "user": { ... }
-  },
-  "proprietaire": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com"
+    "Spot_info": {
+      "number_of_available_spots": 5,
+      "price_range_per_day": "from 20.00 to 50.00",
+      "price_range_hourly_tariff": "from 3.00 to 6.00",
+      "spots": [
+        {
+          "id": 62,
+          "identifier": "403",
+          ...
+        }
+      ]
+    }
   }
-}
+]
 ```
+
+</details>
 
 ---
 
-## ✏️ Mettre à jour un spot (admin ou owner)
+<details>
+<summary>🇫🇷 Version Française</summary>
 
-**PUT** `/api/parking-spots/{id}`
-
-### Paramètres modifiables
-
-| Champ                   | Type    |
-| ----------------------- | ------- |
-| allow_electric_charge   | boolean |
-| is_available            | boolean |
-| per_day_only            | boolean |
-| price_per_day           | number  |
-| price_per_hour          | number  |
-| note                    | string  |
-
-### Réponse
-
-```json
-{
-  "message": "Place mise à jour.",
-  "spot": { ... }
-}
-```
+Cette documentation couvre toutes les routes disponibles pour gérer les **places de parking** dans l’API Laravel.
 
 ---
 
-## 🗑️ Désactiver (soft delete) un spot
-
-**DELETE** `/api/parking-spots/{id}`
-
-### Description
-
-Change le champ `is_available` à `false` (soft delete).
-
-### Réponse
-
-```json
-{
-  "message": "Place désactivée."
-}
-```
+## 🔐 Toutes les routes nécessitent une authentification via token Bearer.
 
 ---
 
-## 🔍 Recherche dynamique
+## 🔄 Liste des places
 
-Seuls les spots appartenant à des parkings actifs et marqués comme disponibles (`is_available = true`) seront retournés. Si le parking est inactif, ses spots ne seront jamais retournés, même s'ils sont marqués disponibles.
-
-**GET** `/api/parking-spots/search`
-
-### Paramètres possibles :
-
-* `country=France` → retourne les villes disponibles dans ce pays.
-* `zip_code=75001` → retourne parkings et spots disponibles dans cette zone.
-* `parking_id=1` → retourne les spots disponibles dans ce parking.
-* Optionnel : `start_datetime` et `end_datetime` pour filtrer selon les disponibilités.
-
-### Réponse type
-
-```json
-{
-  "cities": ["Paris", "Lyon"]
-}
-```
-
-Ou
-
-```json
-{
-  "parkings": [ ... ]
-}
-```
-
-Ou
-
-```json
-{
-  "spots": [ ... ]
-}
-```
+- **Méthode** : `GET`
+- **URL** : `/api/parking-spots`
+- **Accès** :
+  - Admin : toutes les places
+  - Créateur : toutes les places de ses parkings
+  - Co-propriétaire : uniquement ses propres places
+  - Autres : `403 Unauthorized`
 
 ---
 
-## Sécurité
+## ➕ Créer des places
 
-✅ Authentification requise pour accéder à toutes les routes.
+- **Méthode** : `POST`
+- **URL** : `/api/parking-spots`
+- **Accès** : Admin, créateur ou co-propriétaire
+- **Champs requis** : même format que la version anglaise
+
+---
+
+## 📄 Détail d’une place
+
+- **Méthode** : `GET`
+- **URL** : `/api/parking-spots/{id}`
+
+---
+
+## 📝 Modifier une place
+
+- **Méthode** : `PATCH`
+- **URL** : `/api/parking-spots/{id}`
+- **Accès** : propriétaire, créateur, co-propriétaire ou admin
+
+---
+
+## ❌ Désactiver une place
+
+- **Méthode** : `DELETE`
+- **URL** : `/api/parking-spots/{id}`
+
+---
+
+## 🔍 Rechercher des places
+
+- **Méthode** : `GET`
+- **URL** : `/api/parking-spots/search`
+- **Paramètres** :
+  - `country`, `zip_code`, `parking_id`, `start_datetime`, `end_datetime`
 
 </details>
