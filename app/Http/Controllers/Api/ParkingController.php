@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Api;
 
 use Illuminate\Routing\Controller as BaseController;
+use App\Models\ParkingTransfer;
 use App\Models\Parking;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @extends \Illuminate\Routing\Controller
@@ -153,22 +156,38 @@ class ParkingController extends BaseController
         $validated = $request->validate($this->validationRules(true));
 
         if (isset($validated['user_email'])) {
-            $newUser = \App\Models\User::where('email', $validated['user_email'])->first();
-            if ($newUser) {
-                // Update owner of the parking
-                $previousUserId = $parking->user_id;
-                $parking->user_id = $newUser->id;
-                $parking->save();
+            $newUser = User::where('email', $validated['user_email'])->first();
 
-                // Update pivot table
-                if (! $parking->coOwners->contains($newUser->id)) {
-                    $parking->coOwners()->attach($newUser->id, ['role' => 'co_owner']);
-                }
+            if ($newUser && $parking->user_id !== $newUser->id) {
+                DB::transaction(function () use ($parking, $newUser) {
+                    $previousUserId = $parking->user_id;
+                    $parking->user_id = $newUser->id;
+                    $parking->save();
 
-                // Replace all pivot references from previous owner to new owner
-                \DB::table('parking_owner')
-                    ->where('user_id', $previousUserId)
-                    ->update(['user_id' => $newUser->id]);
+                    ParkingTransfer::create([
+                        'parking_id'   => $parking->id,
+                        'old_user_id'  => $previousUserId,
+                        'new_user_id'  => $newUser->id,
+                        'performed_by' => Auth::id(),
+                    ]);
+
+                    if (! $parking->coOwners->contains($newUser->id)) {
+                        $parking->coOwners()->attach($newUser->id, ['role' => 'co_owner']);
+                    }
+
+                    // Replace references in pivot only if they exist
+                    $pivotExists = DB::table('parking_owner')
+                        ->where('parking_id', $parking->id)
+                        ->where('user_id', $previousUserId)
+                        ->exists();
+
+                    if ($pivotExists) {
+                        DB::table('parking_owner')
+                            ->where('parking_id', $parking->id)
+                            ->where('user_id', $previousUserId)
+                            ->update(['user_id' => $newUser->id]);
+                    }
+                });
             }
         }
 
