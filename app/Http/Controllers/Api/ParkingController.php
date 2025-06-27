@@ -95,6 +95,8 @@ class ParkingController extends BaseController
         // Eloquent operation: create parking
         $parking = Parking::create($validated);
 
+        $parking->coOwners()->attach($user->id, ['role' => 'co_owner']);
+
         // Response: return the created parking
         return $parking;
     }
@@ -149,6 +151,26 @@ class ParkingController extends BaseController
 
         // Input validation for partial update
         $validated = $request->validate($this->validationRules(true));
+
+        if (isset($validated['user_email'])) {
+            $newUser = \App\Models\User::where('email', $validated['user_email'])->first();
+            if ($newUser) {
+                // Update owner of the parking
+                $previousUserId = $parking->user_id;
+                $parking->user_id = $newUser->id;
+                $parking->save();
+
+                // Update pivot table
+                if (! $parking->coOwners->contains($newUser->id)) {
+                    $parking->coOwners()->attach($newUser->id, ['role' => 'co_owner']);
+                }
+
+                // Replace all pivot references from previous owner to new owner
+                \DB::table('parking_owner')
+                    ->where('user_id', $previousUserId)
+                    ->update(['user_id' => $newUser->id]);
+            }
+        }
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
@@ -275,6 +297,7 @@ class ParkingController extends BaseController
 
         if ($isUpdate) {
             $rules['is_active'] = 'sometimes|boolean';
+            $rules['user_email'] = 'sometimes|email|exists:users,email';
         }
 
         return $rules;
