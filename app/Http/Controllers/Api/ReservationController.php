@@ -7,7 +7,7 @@ use App\Models\Reservation;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
-
+//TODO reservation multispots. make an error
 class ReservationController extends Controller
 {
     /**
