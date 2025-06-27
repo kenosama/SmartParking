@@ -1,9 +1,131 @@
 
 
 # ParkingSpotController
-
-> [FR] Contrôleur API pour la gestion des emplacements de parking.  
+<detail open> 
+<summary>🇬🇧 English Version</summary>
 > [EN] API Controller for managing parking spots.
+
+---
+
+## Authentication
+
+All routes are protected by Sanctum.  
+The user must be authenticated, and their roles (`is_admin`, `is_owner`, `is_tenant`) are used to restrict access.
+
+---
+
+This controller handles the following operations:
+
+- List accessible spots (`index`)
+- Create one or more spots (`store`)
+- View the details of a spot (`show`)
+- Update a spot (`update`)
+- Deactivate a spot (`destroy`)
+- Search for available spots (`search`)
+
+---
+
+## Methods
+
+### `index()`
+
+- **Method:** `GET /api/parking-spots`
+- **Description:** Returns all parking spots accessible by the authenticated user.
+- **Access:** admin, owner or co-owner
+- **Response:** Grouped list by parking, with grouping by owner.
+- **Format:** Uses `formatSpotResponse()`
+
+---
+
+### `store(Request $request)`
+
+- **Method:** `POST /api/parking-spots`
+- **Description:** Creates one or more spots based on a `identifiers` string with ranges.
+- **Validation:**
+  - `identifiers`: required string (e.g. `"A1-A5,B1,B2-B3"`)
+  - `parking_id`: existing parking ID
+  - `allow_electric_charge`, `is_available`, `per_day_only`: booleans
+  - `price_per_day`, `price_per_hour`: numeric values ≥ 0
+  - `note`: optional string
+- **Additional checks:**
+  - Capacity not exceeded
+  - Duplicate identifiers rejected
+- **Response:** Newly created spots in standard format (`formatSpotResponse`)
+
+---
+
+### `show(ParkingSpot $parkingSpot)`
+
+- **Method:** `GET /api/parking-spots/{id}`
+- **Description:** Displays a spot’s detail, with parking and owner info.
+- **Response:** Single `formatSpotResponse` for one spot
+
+---
+
+### `update(Request $request, ParkingSpot $parkingSpot)`
+
+- **Method:** `PATCH /api/parking-spots/{id}`
+- **Description:** Updates the spot's information.
+- **Access:** spot owner, parking owner, or admin.
+- **Updatable fields:**
+  - `identifier`: validated against duplicates in the same parking
+  - `user_id`: can be changed by admin or parking owner (also updates the pivot table)
+- **Response:** Updated spot in `formatSpotResponse` format.
+
+---
+
+### `destroy(ParkingSpot $parkingSpot)`
+
+- **Method:** `DELETE /api/parking-spots/{id}`
+- **Description:** Deactivates the spot (soft-delete = makes it unavailable).
+- **Response:** JSON message `{ "message": "Spot deactivated." }`
+
+---
+
+### `search(Request $request)`
+
+- **Method:** `GET /api/parking-spots/search`
+- **Description:** Dynamic search:
+  - `?country=BE` → returns available zip codes
+  - `?zip_code=1050` → lists active parkings in the area + number of spots and price range
+  - `?parking_id=7` → lists available spots for this parking, without owner info
+- **Additional filtering:** possible with `start_datetime` and `end_datetime` to exclude already booked spots.
+- **Response:** Adjusted according to the search parameter.
+
+---
+
+## Internal Methods
+
+### `formatSpotResponse($spots)`
+- Transforms a collection of `ParkingSpot` into grouped JSON format by parking and owner.
+
+### `parseIdentifiers(string $input)`
+- Converts a string like `"A1-A3,B1"` into a unique string collection (`["A1", "A2", "A3", "B1"]`)
+
+### `getDuplicateIdentifiers()`
+- Fetches already existing identifiers in a parking.
+
+### `isCapacityExceeded()`
+- Checks if the parking’s total capacity would be exceeded.
+
+### `isUserAuthorizedForParking()`
+- Checks if the current user has rights on a given parking.
+
+
+</detail>
+<detail>
+<summary>🇫🇷 Vesion française</summary>
+> [FR] Contrôleur API pour la gestion des emplacements de parking.  
+
+---
+
+## Authentification
+
+Toutes les routes sont protégées par Sanctum.  
+L’utilisateur doit être authentifié, et ses rôles (`is_admin`, `is_owner`, `is_tenant`) sont utilisés pour restreindre les accès.
+
+---
+
 
 Ce contrôleur permet d'effectuer les opérations suivantes :  
 This controller handles the following operations:
@@ -102,12 +224,4 @@ This controller handles the following operations:
 
 ### `isUserAuthorizedForParking()`
 - Vérifie si l’utilisateur actuel a les droits sur un parking donné.
-
----
-
-## Authentification
-
-Toutes les routes sont protégées par Sanctum.  
-L’utilisateur doit être authentifié, et ses rôles (`is_admin`, `is_owner`, `is_tenant`) sont utilisés pour restreindre les accès.
-
----
+</detail>
