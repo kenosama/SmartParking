@@ -1,5 +1,3 @@
-
-
 # 🛣️ Roadmap – SmartParking Project
 
 This document lists pending or upcoming tasks for the SmartParking API (Laravel 11). It complements the feature documentation and helps track remaining improvements, bugs and refactors.
@@ -29,6 +27,15 @@ This document lists pending or upcoming tasks for the SmartParking API (Laravel 
 - [ ] Add automated tests for RBAC (co-owner vs owner vs admin).
 - [ ] Add middleware or policy checks for reservations per user role.
 
+### 📆 Reservation Logic
+
+- [ ] Prevent overlapping or duplicate reservations for same spot and time.
+- [ ] Enforce RBAC rules for reservation creation/update (user must own or be allowed).
+- [ ] Only allow `user_id` override if admin or matching authenticated user.
+- [ ] Validate availability of spot even if in manual_override.
+- [ ] Extract validation rules into `ReservationRequest` FormRequest.
+- [ ] Move logic-heavy parts of `store`, `update`, `destroy` into `ReservationService`.
+
 ### 🧠 Models & Logic
 
 - [X] Auto-add parking creator as co-owner in `parking_owner` table.
@@ -56,6 +63,10 @@ This document lists pending or upcoming tasks for the SmartParking API (Laravel 
 - [ ] PHPUnit: tests for `store`, `update`, `search` endpoints.
 - [ ] Integration test for transfer + pivot update.
 - [ ] Spot duplication protection on update.
+
+- [ ] Unit tests for ReservationController helper methods (`expandSpotIdentifiers`, `hasReservationConflict`, `validateTimeInterval`).
+- [ ] Integration tests for create/update/delete workflows (owner, co-owner, admin).
+- [ ] Tests for refusal scenarios (403 on forbidden actions, invalid intervals).
 
 ---
 
