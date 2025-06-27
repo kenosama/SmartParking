@@ -1,9 +1,9 @@
 
 
 # ParkingSpotController
-<detail open> 
+<details open> 
 <summary>🇬🇧 English Version</summary>
-> [EN] API Controller for managing parking spots.
+API Controller for managing parking spots.
 
 ---
 
@@ -112,10 +112,10 @@ This controller handles the following operations:
 - Checks if the current user has rights on a given parking.
 
 
-</detail>
-<detail>
+ </details>
+<details>
 <summary>🇫🇷 Vesion française</summary>
-> [FR] Contrôleur API pour la gestion des emplacements de parking.  
+Contrôleur API pour la gestion des emplacements de parking.  
 
 ---
 
@@ -224,4 +224,4 @@ This controller handles the following operations:
 
 ### `isUserAuthorizedForParking()`
 - Vérifie si l’utilisateur actuel a les droits sur un parking donné.
-</detail>
+</details>
