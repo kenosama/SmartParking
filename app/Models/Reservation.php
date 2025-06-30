@@ -26,8 +26,8 @@ class Reservation extends Model
         'user_id',
         'parking_spot_id',
         'parking_id',
-        'start_datetime'=> 'datetime',
-        'end_datetime'=>'datetime',
+        'start_datetime',
+        'end_datetime',
         'license_plate',
         'status', // Optional: e.g., "pending", "confirmed", "cancelled"
         'group_token'
