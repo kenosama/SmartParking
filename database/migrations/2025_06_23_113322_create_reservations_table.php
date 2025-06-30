@@ -26,21 +26,11 @@ return new class extends Migration
             // Reference to the specific parking spot
             $table->foreignId('parking_spot_id')->constrained()->onDelete('cascade');
 
-            // The reservation start date
-            $table->date('reserved_date');
-
-            // The reservation end date (optional)
-            $table->date('end_date')->nullable();
-
-            // Start time of the reservation (required)
-            $table->time('start_time');
-
-            // End time of the reservation (required)
-            $table->time('end_time');
-
+            // Reservation start and end datetimes
+            $table->timestamp('start_datetime');
+            $table->timestamp('end_datetime');
             // Optional license plate linked to the reservation
             $table->string('license_plate')->nullable();
-
             // Status of the reservation
             // - active: ongoing reservation
             // - cancelled_by_user: cancelled by the person who booked it
@@ -57,14 +47,12 @@ return new class extends Migration
                 'done'
             ])->default('active');
 
+            $table->uuid('group_token')->nullable()->index();
+            // Unique constraint to prevent overlapping reservations on the same spot at the same datetime
+            $table->unique(['parking_spot_id', 'start_datetime', 'end_datetime'], 'unique_reservation_timeframe');
+
             // Laravel timestamps: created_at and updated_at
             $table->timestamps();
-
-            // Prevents overlapping reservations for the same parking spot and time slot
-            $table->unique(
-                ['parking_spot_id', 'reserved_date', 'start_time', 'end_time'],
-                'unique_reservation'
-            );
         });
     }
 
