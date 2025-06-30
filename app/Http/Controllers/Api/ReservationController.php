@@ -60,7 +60,7 @@ class ReservationController extends Controller
     protected function getValidationRules(bool $isUpdate = false): array
     {
         return [
-            'user_id' => ($isUpdate ? 'sometimes|required' : 'required') . '|exists:users,id',
+            'user_id' => 'sometimes|exists:users,id',
             'parking_id' => ($isUpdate ? 'sometimes|required' : 'required') . '|exists:parkings,id',
             'parking_spot_identifiers' => ($isUpdate ? 'sometimes|required' : 'required') . '|string',
             'reserved_date' => ($isUpdate ? 'sometimes|required' : 'required') . '|date',
@@ -90,8 +90,8 @@ class ReservationController extends Controller
     {
         $query = \App\Models\Reservation::where('parking_spot_id', $spotId)
             ->where(function ($q) use ($startDateTime, $endDateTime) {
-                $q->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', start_time), '%Y-%m-%d %H:%i:%s') < ?", [$endDateTime])
-                  ->whereRaw("STR_TO_DATE(CONCAT(reserved_date, ' ', end_time), '%Y-%m-%d %H:%i:%s') > ?", [$startDateTime]);
+                $q->where('start_datetime', '<', $endDateTime)
+                  ->where('end_datetime', '>', $startDateTime);
             })
             ->whereIn('status', ['active', 'manual_override']);
 
@@ -112,173 +112,208 @@ class ReservationController extends Controller
     }
 
     /**
-     * Creates one or more new reservations
+     * Creates one or more new reservations (refactored with 7-step logic and helper methods).
      */
     public function store(Request $request)
     {
         try {
-            // Validate request data: user, parking, time slots, spot identifiers, plates...
+            // Step 1: Validate request data
             $validated = $request->validate($this->getValidationRules());
 
-            // Étape 1 : Analyse des dates et heures avec gestion robuste des erreurs
-            try {
-                $reservedDate = $validated['reserved_date'];
-                $endDate = $validated['end_date'] ?? $reservedDate;
-                $startTime = $validated['start_time'];
-                $endTime = $validated['end_time'];
+            // Step 2: Determine target user (admin proxy or self only)
+            $targetUserId = $this->resolveTargetUser($request, $validated);
 
-                // Vérifie si les heures sont valides
-                if (!Carbon::hasFormat($startTime, 'H:i') || !Carbon::hasFormat($endTime, 'H:i')) {
-                    return response()->json(['error' => 'Invalid time format. Use HH:MM.'], 422);
-                }
+            // Step 3: Parse and validate datetime range, get Carbon objects
+            [$startDateTime, $endDateTime] = $this->parseDateTimes($validated);
+            $dailySegments = $this->explodeDateRange($startDateTime, $endDateTime);
 
-                // Vérifie si les dates sont valides
-                if (!Carbon::hasFormat($reservedDate, 'Y-m-d') || !Carbon::hasFormat($endDate, 'Y-m-d')) {
-                    return response()->json(['error' => 'Invalid date format. Use YYYY-MM-DD.'], 422);
-                }
-
-                // Construit les datetime
-                $startDateTime = Carbon::parse("$reservedDate $startTime");
-                $endDateTime = Carbon::parse("$endDate $endTime");
-
-                // Vérifie que la fin est après le début
-                if ($endDateTime->lessThanOrEqualTo($startDateTime)) {
-                    return response()->json([
-                        'error' => 'End datetime must be after start datetime. Ensure that start and end times are logical, even across multiple days.'
-                    ], 422);
-                }
-
-                // Cas particulier : réservation sur un seul jour mais horaire inversé
-                if ($reservedDate === $endDate && $startTime >= $endTime) {
-                    return response()->json([
-                        'error' => 'For same-day reservations, end time must be after start time.'
-                    ], 422);
-                }
-            } catch (\Exception $e) {
-                return response()->json([
-                    'error' => 'Failed to parse reservation datetime: ' . $e->getMessage()
-                ], 422);
-            }
-
-            // Parse spot identifiers and license plates using helper methods
+            // Step 4: Parse spot identifiers and license plates, ensure counts match
             $identifiers = $this->expandSpotIdentifiers($validated['parking_spot_identifiers']);
             $plates = $this->normalizeLicensePlates($validated['license_plate']);
-
-            // Ensure each spot has a corresponding license plate
             if (count($identifiers) !== count($plates)) {
                 return response()->json([
                     'error' => 'Number of license plates must match number of parking spots.'
                 ], 422);
             }
 
-            // Get valid spots matching given identifiers for the selected parking (active only)
-            $parkingSpots = \App\Models\ParkingSpot::where('parking_id', $validated['parking_id'])
-                ->whereHas('parking', function ($query) {
-                    $query->where('is_active', true);
-                })
-                ->whereIn('identifier', $identifiers)
-                ->get();
+            // Step 5: Resolve parking spots (active, for this parking, by identifier)
+            $parkingSpots = $this->resolveParkingSpots($validated['parking_id'], $identifiers);
 
-            if (count($parkingSpots) !== count($identifiers)) {
-                return response()->json([
-                    'error' => 'One or more parking spot identifiers are invalid for the selected parking.'
-                ], 422);
-            }
+            // Generate a group token for this reservation group
+            $groupToken = (string) \Illuminate\Support\Str::uuid();
 
+            // Step 6: Check for conflicts, duplicates, create reservations (one per day and per spot)
             $reservations = [];
-            $adjustment_message = null;
-            $startDateTime = null;
-            $endDateTime = null;
-            $durationMinutes = null;
-            // Process each spot for reservation creation
-            foreach ($parkingSpots as $index => $spot) {
-                // Determine if spot uses per-day-only reservation
-                $perDayOnly = $spot->per_day_only;
+            $spotCosts = [];
+            $totalCost = 0;
+            $durationMinutes = 0;
 
-                // Calculate start and end datetime based on per_day_only flag
-                if ($perDayOnly) {
-                    $startDateTime = Carbon::parse($validated['reserved_date'])->startOfDay();
-                    $endDateTime = Carbon::parse($validated['end_date'] ?? $validated['reserved_date'])->endOfDay();
-                    $adjustment_message = 'Reservation times adjusted for daily-only spot. Times set to 00:00 - 23:59.';
-                } else {
-                    $startDateTime = Carbon::parse($validated['reserved_date'] . ' ' . $validated['start_time']);
-                    $endDateTime = Carbon::parse(($validated['end_date'] ?? $validated['reserved_date']) . ' ' . $validated['end_time']);
-                }
+            foreach ($parkingSpots as $i => $spot) {
+                $plate = $plates[$i];
 
-                // Vérification anti-réservation dans le passé
+                // Prevent reservation in the past
                 if ($startDateTime->isPast()) {
                     return response()->json(['error' => 'You cannot book a reservation in the past.'], 422);
                 }
 
-                // Check for reservation conflicts for each requested spot using helper
-                if ($this->hasReservationConflict($spot->id, $startDateTime, $endDateTime)) {
-                    return response()->json([
-                        'error' => "Spot {$spot->identifier} is already reserved for the selected time."
-                    ], 409);
+                foreach ($dailySegments as $segment) {
+                    $dailyStart = $segment['start'];
+                    $dailyEnd = $segment['end'];
+
+                    if ($dailyEnd->lessThanOrEqualTo($dailyStart)) {
+                        continue;
+                    }
+
+                    // Check for conflict
+                    if ($this->hasReservationConflict($spot->id, $dailyStart, $dailyEnd)) {
+                        return response()->json([
+                            'error' => "Spot {$spot->identifier} is already reserved for {$dailyStart->toDateString()}."
+                        ], 409);
+                    }
+
+                    $reservation = Reservation::create([
+                        'user_id' => $targetUserId,
+                        'parking_id' => $validated['parking_id'],
+                        'parking_spot_id' => $spot->id,
+                        'start_datetime' => $dailyStart,
+                        'end_datetime' => $dailyEnd,
+                        'license_plate' => $plate,
+                        'status' => 'active',
+                        'group_token' => $groupToken,
+                    ]);
+
+                    $spot->is_available = false;
+                    $spot->save();
+
+                    $costData = $this->calculateCostAndDuration($spot, $dailyStart, $dailyEnd);
+                    $spotCosts[] = $costData['estimated_cost'];
+                    $totalCost += $costData['estimated_cost'];
+                    $durationMinutes += $costData['duration_minutes'];
+
+                    $reservations[] = $reservation->load('user', 'parkingSpot.parking');
                 }
-
-                // Prevent duplicate reservation from same user for same spot and time
-                $existingReservation = Reservation::where('user_id', $validated['user_id'])
-                    ->where('parking_spot_id', $spot->id)
-                    ->where('reserved_date', $validated['reserved_date'])
-                    ->where('start_time', $perDayOnly ? '00:00' : $validated['start_time'])
-                    ->where('end_time', $perDayOnly ? '23:59' : $validated['end_time'])
-                    ->whereIn('status', ['active', 'manual_override']) // ignore cancelled or done
-                    ->first();
-
-                if ($existingReservation) {
-                    return response()->json([
-                        'error' => "User already has a reservation for spot {$spot->identifier} at the selected time."
-                    ], 409);
-                }
-
-                // Create reservation if no conflict and not a duplicate
-                $reservation = Reservation::create([
-                    'user_id' => $validated['user_id'],
-                    'parking_spot_id' => $spot->id,
-                    'parking_id' => $validated['parking_id'], // Ensure parking_id is passed explicitly
-                    'reserved_date' => $validated['reserved_date'],
-                    'end_date' => $validated['end_date'] ?? null,
-                    'start_time' => $perDayOnly ? '00:00' : $validated['start_time'],
-                    'end_time' => $perDayOnly ? '23:59' : $validated['end_time'],
-                    'status' => $validated['status'] ?? 'active',
-                    'license_plate' => $plates[$index],
-                ]);
-
-                // Update spot availability
-                $spot->is_available = false;
-                $spot->save();
-
-                $reservations[] = $reservation->load('user', 'parkingSpot.parking');
             }
 
-            // Calcul des coûts pour chaque spot réservé et addition du coût total
-            $spotCosts = [];
-            $totalEstimatedCost = 0.0;
-            // Calcul du duration_minutes commun (tous les spots ont la même période)
-            $costData = $this->calculateCostAndDuration($parkingSpots[0], $startDateTime, $endDateTime);
-            $durationMinutes = $costData['duration_minutes'];
-            foreach ($reservations as $i => $reservation) {
-                $costData = $this->calculateCostAndDuration($reservation->parkingSpot, $startDateTime, $endDateTime);
-                $spotCosts[] = $costData['estimated_cost'];
-                $totalEstimatedCost += floatval(str_replace(',', '.', $costData['estimated_cost']));
-            }
-
-            return $this->formatReservationResponse($reservations, [
-                'date' => $validated['reserved_date'] . ($endDate ? ' → ' . $endDate : ''),
+            // Summary
+            $summary = [
+                'date' => $startDateTime->format('Y-m-d') . ($endDateTime->format('Y-m-d') !== $startDateTime->format('Y-m-d') ? ' → ' . $endDateTime->format('Y-m-d') : ''),
                 'time' => $startDateTime->format('H:i') . ' → ' . $endDateTime->format('H:i'),
                 'duration_minutes' => $durationMinutes,
-                'estimated_cost' => number_format($totalEstimatedCost, 2),
-                'status' => $reservations[0]->status,
                 'license_plates' => $plates,
                 'spot_costs' => $spotCosts,
-            ], $adjustment_message ?? 'Reservation successful.');
+                'estimated_cost' => number_format($totalCost, 2),
+                'status' => 'active',
+            ];
+
+            return $this->formatReservationResponse($reservations, $summary, 'Reservation successful.');
         } catch (\Throwable $e) {
             return response()->json([
                 'error' => 'An unexpected error occurred while processing the reservation.',
                 'details' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Helper: Resolve the target user for reservation (enforces admin proxy rule).
+     */
+    protected function resolveTargetUser(Request $request, array $validated): int
+    {
+        $currentUser = $request->user();
+        $targetUserId = $validated['user_id'] ?? $currentUser->id;
+
+        if (array_key_exists('user_id', $validated) && !$currentUser->is_admin && $validated['user_id'] != $currentUser->id) {
+            abort(response()->json([
+                'error' => 'You are not authorized to create a reservation for another user.'
+            ], 403));
+        }
+
+        return $targetUserId;
+    }
+
+    /**
+     * Helper: Parse and validate reservation datetimes, return [start, end] as Carbon objects.
+     */
+    protected function parseDateTimes(array $validated): array
+    {
+        $reservedDate = $validated['reserved_date'];
+        $endDate = $validated['end_date'] ?? $reservedDate;
+        $startTime = $validated['start_time'];
+        $endTime = $validated['end_time'];
+
+        if (!\Carbon\Carbon::hasFormat($startTime, 'H:i') || !\Carbon\Carbon::hasFormat($endTime, 'H:i')) {
+            abort(response()->json(['error' => 'Invalid time format. Use HH:MM.'], 422));
+        }
+
+        if (!\Carbon\Carbon::hasFormat($reservedDate, 'Y-m-d') || !\Carbon\Carbon::hasFormat($endDate, 'Y-m-d')) {
+            abort(response()->json(['error' => 'Invalid date format. Use YYYY-MM-DD.'], 422));
+        }
+
+        $startDateTime = \Carbon\Carbon::parse("$reservedDate $startTime");
+        $endDateTime = \Carbon\Carbon::parse("$endDate $endTime");
+
+        if ($endDateTime->lessThanOrEqualTo($startDateTime)) {
+            abort(response()->json(['error' => 'End datetime must be after start datetime. Ensure that start and end times are logical, even across multiple days.'], 422));
+        }
+
+        if ($reservedDate === $endDate && $startTime >= $endTime) {
+            abort(response()->json(['error' => 'For same-day reservations, end time must be after start time.'], 422));
+        }
+
+        return [$startDateTime, $endDateTime];
+    }
+
+    /**
+     * Explodes a start → end datetime range into daily segments for split reservations.
+     * Returns an array of ['start' => Carbon, 'end' => Carbon] per day.
+     */
+    protected function explodeDateRange(\Carbon\Carbon $startDateTime, \Carbon\Carbon $endDateTime): array
+    {
+        $segments = [];
+
+        $currentDay = $startDateTime->copy()->startOfDay();
+        $endDay = $endDateTime->copy()->startOfDay();
+
+        while ($currentDay->lte($endDay)) {
+            // Début réel pour le premier jour
+            $start = $currentDay->eq($startDateTime->copy()->startOfDay())
+                ? $startDateTime->copy()
+                : $currentDay->copy()->setTime(0, 0);
+
+            // Fin réelle pour le dernier jour
+            $end = $currentDay->eq($endDateTime->copy()->startOfDay())
+                ? $endDateTime->copy()
+                : $currentDay->copy()->setTime(23, 59);
+
+            // Si l'intervalle est valide
+            if ($end->gt($start)) {
+                $segments[] = [
+                    'start' => $start,
+                    'end' => $end,
+                ];
+            }
+
+            $currentDay->addDay();
+        }
+
+        return $segments;
+    }
+
+    /**
+     * Helper: Resolve parking spots for a parking and list of identifiers, ensure all are valid/active.
+     */
+    protected function resolveParkingSpots(int $parkingId, array $identifiers)
+    {
+        $spots = \App\Models\ParkingSpot::where('parking_id', $parkingId)
+            ->whereHas('parking', fn ($q) => $q->where('is_active', true))
+            ->whereIn('identifier', $identifiers)
+            ->get();
+
+        if (count($spots) !== count($identifiers)) {
+            abort(response()->json(['error' => 'One or more parking spot identifiers are invalid for the selected parking.'], 422));
+        }
+
+        return $spots;
     }
 
     /**
@@ -693,49 +728,60 @@ class ReservationController extends Controller
     }
 
     /**
-     * Returns the estimated cost and duration in minutes based on a unified rule.
-     * Correction complète du calcul de durée et de coût.
+     * Returns the estimated cost and duration in minutes based on the new precise logic.
      */
     protected function calculateCostAndDuration(\App\Models\ParkingSpot $spot, \Carbon\Carbon $startDateTime, \Carbon\Carbon $endDateTime): array
     {
-        // Handle reservation across midnight properly: from 17:00 to 09:00 next day
-        $adjustedEnd = $endDateTime;
-        if ($endDateTime->lessThanOrEqualTo($startDateTime)) {
-            $adjustedEnd = $endDateTime->copy()->addDay();
-        }
-        $durationMinutes = $startDateTime->diffInMinutes($adjustedEnd);
+        // Total duration in minutes
+        $durationMinutes = $startDateTime->diffInMinutes($endDateTime);
 
-        // Si le spot est uniquement à la journée, on applique le tarif par jour en comptant les jours pleins
+        // If per day only
         if ($spot->per_day_only) {
             $days = $startDateTime->copy()->startOfDay()->diffInDays($endDateTime->copy()->endOfDay()) + 1;
-            $estimatedCost = $days * $spot->price_per_day;
+            return [
+                'duration_minutes' => $durationMinutes,
+                'estimated_cost' => round($days * $spot->price_per_day, 2),
+            ];
+        }
+
+        // Logic for hourly or daily pricing
+        // Case 1: less than 6h -> hourly
+        if ($durationMinutes < 360) {
+            $hours = ceil($durationMinutes / 60);
+            return [
+                'duration_minutes' => $durationMinutes,
+                'estimated_cost' => round($hours * $spot->price_per_hour, 2),
+            ];
+        }
+
+        // Case 2: exactly 6h
+        if ($durationMinutes === 360) {
+            $hourlyCost = 6 * $spot->price_per_hour;
+            return [
+                'duration_minutes' => $durationMinutes,
+                'estimated_cost' => round(min($hourlyCost, $spot->price_per_day), 2),
+            ];
+        }
+
+        // Case 3: more than 6h -> new daily/hourly cost logic
+        $days = $startDateTime->copy()->startOfDay()->diffInDays($endDateTime->copy()->endOfDay()) + 1;
+        $startTime = $startDateTime->format('H:i');
+        $endTime = $endDateTime->format('H:i');
+
+        $dailyDuration = \Carbon\Carbon::createFromFormat('H:i', $startTime)
+            ->diffInMinutes(\Carbon\Carbon::createFromFormat('H:i', $endTime));
+
+        if ($dailyDuration >= 360) {
+            $estimated_cost = $days * $spot->price_per_day;
         } else {
-            // Sinon, on applique :
-            // - tarif journalier si la durée >= 12h (720 minutes)
-            // - tarif horaire sinon
-
-            if ($durationMinutes >= 720) {
-                $days = ceil($durationMinutes / 1440); // chaque tranche de 24h = 1 jour
-                $estimatedCost = $days * $spot->price_per_day;
-
-                // Ajout des heures résiduelles restantes après les jours pleins
-                $remainingMinutes = $durationMinutes % 1440;
-                if ($remainingMinutes >= 360) {
-                    // Une "grosse tranche" >= 6h est traitée comme une journée supplémentaire
-                    $estimatedCost += $spot->price_per_day;
-                } elseif ($remainingMinutes > 0) {
-                    // Sinon, calcul horaire sur la tranche restante
-                    $estimatedCost += ceil($remainingMinutes / 60) * $spot->price_per_hour;
-                }
-            } else {
-                // Moins de 12h → tarif horaire
-                $estimatedCost = ceil($durationMinutes / 60) * $spot->price_per_hour;
-            }
+            $totalMinutes = $dailyDuration * $days;
+            $hours = ceil($totalMinutes / 60);
+            $estimated_cost = $hours * $spot->price_per_hour;
         }
 
         return [
             'duration_minutes' => $durationMinutes,
-            'estimated_cost' => number_format($estimatedCost, 2),
+            'estimated_cost' => round($estimated_cost, 2),
         ];
     }
 
