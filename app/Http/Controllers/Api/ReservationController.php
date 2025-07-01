@@ -96,8 +96,6 @@ class ReservationController extends Controller
 | Methods pour la préparation des entrées
 |--------------------------------------------------------------------------
 */
-
-
     /**
      * Parse and validate the parking spot identifiers and license plates.
      *
