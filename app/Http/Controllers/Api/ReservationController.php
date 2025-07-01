@@ -125,16 +125,28 @@ class ReservationController extends Controller
         $expanded = [];
 
         foreach (explode(',', $identifiers) as $part) {
-            $part = trim($part);
-            // If the part is a range (e.g., "2-4"), expand it
-            if (preg_match('/^(\d+)-(\d+)$/', $part, $matches)) {
-                $start = (int)$matches[1];
-                $end = (int)$matches[2];
+            $part = strtoupper(trim($part));
+
+            // Match ranges with same alphanumeric prefix, e.g. A1-A5 or B101-B105
+            if (preg_match('/^([A-Z]*)(\d+)-\1(\d+)$/', $part, $matches)) {
+                $prefix = $matches[1];
+                $start = (int) $matches[2];
+                $end = (int) $matches[3];
+
                 for ($i = $start; $i <= $end; $i++) {
-                    $expanded[] = (string)$i;
+                    $expanded[] = $prefix . $i;
+                }
+            }
+            // Match purely numeric range (e.g. 1-5)
+            elseif (preg_match('/^(\d+)-(\d+)$/', $part, $matches)) {
+                $start = (int) $matches[1];
+                $end = (int) $matches[2];
+
+                for ($i = $start; $i <= $end; $i++) {
+                    $expanded[] = (string) $i;
                 }
             } else {
-                // Otherwise, add the single identifier
+                // Just a single identifier
                 $expanded[] = $part;
             }
         }
