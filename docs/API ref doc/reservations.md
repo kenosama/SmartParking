@@ -1,227 +1,333 @@
-# 📑 API Documentation — Reservations
-
 <details open>
-<summary>🇬🇧 English</summary>
+<summary>🇬🇧 English Version</summary>
 
-## 🔐 Authentication Required
+# ReservationController – API Reference
 
-All routes below require a valid Bearer token authentication.
-
----
-
-## 📘 GET /api/reservations
-
-Retrieve all reservations.
-
-**Response:**
-- 200 OK
-- List of reservations with related user, parking and parking spot.
+This document provides detailed reference for all **public API endpoints** in the `ReservationController`, including example requests and responses.
 
 ---
 
-## 📘 GET /api/reservations/{reservation}
+## `GET /api/reservations`
 
-Retrieve a specific reservation.
+**Description:** Retrieve all reservations of the authenticated user.
 
-**Parameters:**
-- `reservation` (int) — Reservation ID
+**Example request:**
+```http
+GET /api/reservations HTTP/1.1
+Authorization: Bearer {token}
+Accept: application/json
+```
 
-**Response:**
-- 200 OK with reservation details
-- 403 if unauthorized
-
----
-
-## ✏️ POST /api/reservations
-
-Create one or more reservations.
-
-**Required fields:**
-- `user_id` (int)
-- `parking_id` (int)
-- `parking_spot_identifiers` (string) — Example: `"A1,A2,B1-B3"`
-- `reserved_date` (date) — `YYYY-MM-DD`
-- `start_time` (string) — format `HH:MM`
-- `end_time` (string) — must be after start_time
-- `license_plate` (string) — Comma-separated, one per spot
-
-**Behavior:**
-- Accepts ranges like `B1-B3`
-- Cleans license plates (removes symbols and spaces)
-- Ensures parking is active
-- Validates time slot availability per spot
-- One reservation per spot and plate
-- Rejects if end_time is before start_time (with validation)
-
-**Response:**
-- 201 Created with reservations
-- 422 on validation error
-- 409 on time conflict
+**Example response:**
+```json
+[
+  {
+    "id": 1,
+    "status": "active",
+    "start_datetime": "2025-07-03T08:00:00",
+    "end_datetime": "2025-07-03T12:00:00",
+    "parking_spots": [...],
+    "license_plates": ["AB-123-CD"],
+    "total_cost": 12.00,
+    "created_at": "2025-07-01T10:00:00"
+  }
+]
+```
 
 ---
 
-## ✏️ PUT /api/reservations/{reservation}
+## `GET /api/reservations/{id}`
 
-Update an existing reservation.
+**Description:** Show a specific reservation.
 
-**Parameters:**
-- `reservation` (int)
+**Example request:**
+```http
+GET /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+Accept: application/json
+```
 
-**Optional fields:**
-- `parking_id` (int)
-- `parking_spot_identifiers` (string) — Example: `"A1,A2,B1-B3"`
-- `reserved_date` (date) — `YYYY-MM-DD`
-- `start_time` (string) — format `HH:MM`
-- `end_time` (string) — must be after start_time
-- `license_plate` (string) — Comma-separated, one per spot
-
-**Behavior:**
-- Accepts multiple spots and plates (like POST)
-- Cleans license plates (removes symbols and spaces)
-- Ensures the count of spots matches the number of license plates
-- Prevents overlapping reservations for the same spots and time
-- Validates and adjusts time if necessary (e.g. for per_day_only parkings)
-- Rejects if end_time is before start_time (with validation)
-
-**Response:**
-- 200 OK with updated reservations
-- 403 if unauthorized
-- 409 on conflict (e.g. overlapping reservation)
-- 422 on validation error
+**Example response:**
+```json
+{
+  "id": 1,
+  "status": "active",
+  "summary": {...}
+}
+```
 
 ---
 
-## 🗑️ DELETE /api/reservations/{reservation}
+## `POST /api/reservations`
 
-Soft delete (cancel) a reservation. The `status` field is updated instead of deleting.
+**Description:** Create a new reservation.
 
-**Rules:**
-- Admin can cancel anytime → status `cancelled_by_admin`
-- Parking owner can cancel if less than 48h before reservation → `cancelled_by_owner`
-- User can cancel if more than 24h before → `cancelled_by_user`
+**Example request:**
+```http
+POST /api/reservations HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
 
-**Response:**
-- 200 OK with cancellation message and status
-- 403 if not allowed
+{
+  "parking_id": 1,
+  "spot_identifiers": ["A1"],
+  "license_plates": ["AB-123-CD"],
+  "start_datetime": "2025-07-04T08:00:00",
+  "end_datetime": "2025-07-04T12:00:00"
+}
+```
+
+**Example response:**
+```json
+{
+  "message": "Reservation created successfully.",
+  "reservation": {
+    "id": 12,
+    "status": "active",
+    "total_cost": 20.00
+  }
+}
+```
 
 ---
 
-## ⏱️ Automatic status transition (Upcoming feature)
+## `PUT /api/reservations/{id}`
 
-Reservations with `active` status will auto-update to `done` once the end time is reached.
+**Description:** Update a reservation.
+
+**Example request:**
+```http
+PUT /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "start_datetime": "2025-07-04T09:00:00",
+  "end_datetime": "2025-07-04T13:00:00"
+}
+```
+
+**Example response:**
+```json
+{
+  "message": "Reservation updated successfully.",
+  "reservation": {...}
+}
+```
+
+---
+
+## `DELETE /api/reservations/{id}`
+
+**Description:** Cancel a reservation.
+
+**Example request:**
+```http
+DELETE /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+```
+
+**Example response:**
+```json
+{
+  "message": "Reservation cancelled successfully."
+}
+```
+
+---
+
+## `POST /api/reservations/calculate`
+
+**Description:** Estimate the cost and duration of a reservation before confirming it.
+
+**Example request:**
+```http
+POST /api/reservations/calculate HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "parking_id": 1,
+  "spot_identifiers": ["A1"],
+  "start_datetime": "2025-07-04T08:00:00",
+  "end_datetime": "2025-07-04T12:00:00"
+}
+```
+
+**Example response:**
+```json
+{
+  "total_cost": 20.00,
+  "duration_hours": 4,
+  "per_hour_rate": 5.00
+}
+```
 
 </details>
 
----
-
 <details>
-<summary>🇫🇷 Français</summary>
+<summary>🇫🇷 Version française</summary>
 
-## 🔐 Authentification requise
+# ReservationController – Référence de l’API
 
-Toutes les routes ci-dessous nécessitent une authentification Bearer.
-
----
-
-## 📘 GET /api/reservations
-
-Récupère toutes les réservations.
-
-**Réponse :**
-- 200 OK
-- Liste des réservations avec utilisateur, parking et emplacement.
+Ce document fournit une référence détaillée pour tous les **points de terminaison publics** de l’API du `ReservationController`, avec exemples de requêtes et réponses.
 
 ---
 
-## 📘 GET /api/reservations/{reservation}
+## `GET /api/reservations`
 
-Affiche une réservation spécifique.
+**Description :** Récupère toutes les réservations de l’utilisateur connecté.
 
-**Paramètres :**
-- `reservation` (int) — ID de la réservation
+**Exemple de requête :**
+```http
+GET /api/reservations HTTP/1.1
+Authorization: Bearer {token}
+Accept: application/json
+```
 
-**Réponse :**
-- 200 OK avec les détails
-- 403 si accès refusé
-
----
-
-## ✏️ POST /api/reservations
-
-Crée une ou plusieurs réservations.
-
-**Champs requis :**
-- `user_id` (int)
-- `parking_id` (int)
-- `parking_spot_identifiers` (string) — Ex: `"A1,A2,B1-B3"`
-- `reserved_date` (date)
-- `start_time` (HH:MM)
-- `end_time` (HH:MM)
-- `license_plate` (string) — séparés par virgule
-
-**Comportement :**
-- Supporte les plages `B1-B3`
-- Nettoie les plaques (espaces, symboles)
-- Vérifie que le parking est actif
-- Valide la disponibilité horaire
-- Une réservation par emplacement
-- Rejette si l’heure de fin est antérieure à l’heure de début (validation)
-
-**Réponse :**
-- 201 Created
-- 422 si erreur de validation
-- 409 si conflit d’horaire
+**Exemple de réponse :**
+```json
+[
+  {
+    "id": 1,
+    "status": "active",
+    "start_datetime": "2025-07-03T08:00:00",
+    "end_datetime": "2025-07-03T12:00:00",
+    "parking_spots": [...],
+    "license_plates": ["AB-123-CD"],
+    "total_cost": 12.00,
+    "created_at": "2025-07-01T10:00:00"
+  }
+]
+```
 
 ---
 
-## ✏️ PUT /api/reservations/{reservation}
+## `GET /api/reservations/{id}`
 
-Met à jour une réservation existante.
+**Description :** Affiche une réservation spécifique.
 
-**Paramètres :**
-- `reservation` (int)
+**Exemple de requête :**
+```http
+GET /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+Accept: application/json
+```
 
-**Champs possibles :**
-- `parking_id` (int)
-- `parking_spot_identifiers` (string) — ex: `"A1,A2,B1-B3"`
-- `reserved_date` (date) — `YYYY-MM-DD`
-- `start_time` (HH:MM)
-- `end_time` (HH:MM) — doit être après start_time
-- `license_plate` (string) — séparées par virgule, une par place
-
-**Comportement :**
-- Accepte plusieurs emplacements et plaques (comme POST)
-- Nettoie les plaques (enlève symboles et espaces)
-- Vérifie la cohérence entre le nombre d’emplacements et de plaques
-- Empêche les réservations qui se chevauchent
-- Valide et ajuste l’horaire si nécessaire (ex: pour les parkings à la journée uniquement)
-- Rejette si l’heure de fin est antérieure à l’heure de début (validation)
-
-**Réponse :**
-- 200 OK avec les réservations mises à jour
-- 403 si accès refusé
-- 409 en cas de conflit (ex: réservation concurrente)
-- 422 si erreur de validation
+**Exemple de réponse :**
+```json
+{
+  "id": 1,
+  "status": "active",
+  "summary": {...}
+}
+```
 
 ---
 
-## 🗑️ DELETE /api/reservations/{reservation}
+## `POST /api/reservations`
 
-Annule une réservation (soft delete via champ `status`).
+**Description :** Crée une nouvelle réservation.
 
-**Règles :**
-- Admin → `cancelled_by_admin`
-- Propriétaire du parking (si -48h) → `cancelled_by_owner`
-- Utilisateur (si +24h) → `cancelled_by_user`
+**Exemple de requête :**
+```http
+POST /api/reservations HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
 
-**Réponse :**
-- 200 OK avec statut
-- 403 si annulation interdite
+{
+  "parking_id": 1,
+  "spot_identifiers": ["A1"],
+  "license_plates": ["AB-123-CD"],
+  "start_datetime": "2025-07-04T08:00:00",
+  "end_datetime": "2025-07-04T12:00:00"
+}
+```
+
+**Exemple de réponse :**
+```json
+{
+  "message": "Réservation créée avec succès.",
+  "reservation": {
+    "id": 12,
+    "status": "active",
+    "total_cost": 20.00
+  }
+}
+```
 
 ---
 
-## ⏱️ Transition automatique (à venir)
+## `PUT /api/reservations/{id}`
 
-Les réservations actives passeront à `done` automatiquement à la fin.
+**Description :** Met à jour une réservation.
+
+**Exemple de requête :**
+```http
+PUT /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "start_datetime": "2025-07-04T09:00:00",
+  "end_datetime": "2025-07-04T13:00:00"
+}
+```
+
+**Exemple de réponse :**
+```json
+{
+  "message": "Réservation mise à jour avec succès.",
+  "reservation": {...}
+}
+```
+
+---
+
+## `DELETE /api/reservations/{id}`
+
+**Description :** Annule une réservation.
+
+**Exemple de requête :**
+```http
+DELETE /api/reservations/1 HTTP/1.1
+Authorization: Bearer {token}
+```
+
+**Exemple de réponse :**
+```json
+{
+  "message": "Réservation annulée avec succès."
+}
+```
+
+---
+
+## `POST /api/reservations/calculate`
+
+**Description :** Estime le coût et la durée d’une réservation avant confirmation.
+
+**Exemple de requête :**
+```http
+POST /api/reservations/calculate HTTP/1.1
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "parking_id": 1,
+  "spot_identifiers": ["A1"],
+  "start_datetime": "2025-07-04T08:00:00",
+  "end_datetime": "2025-07-04T12:00:00"
+}
+```
+
+**Exemple de réponse :**
+```json
+{
+  "total_cost": 20.00,
+  "duration_hours": 4,
+  "per_hour_rate": 5.00
+}
+```
 
 </details>
