@@ -852,7 +852,7 @@ class ReservationController extends Controller
         $reservationsQuery = Reservation::with(['user', 'parkingSpot.parking']);
 
             if ($user->isAdmin()) {
-                $reservations = $reservationsQuery->get()->where('status', 'active');
+                $reservations = $reservationsQuery->get();
         } elseif ($user->isOwner()) {
             $ownedSpotIds = ParkingSpot::whereHas('parking', function ($query) use ($user) {
                 $query->where('owner_id', $user->id);
