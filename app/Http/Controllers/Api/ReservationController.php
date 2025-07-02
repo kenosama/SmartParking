@@ -620,7 +620,22 @@ class ReservationController extends Controller
      */
     private function formatReservations($reservations)
     {
-        return $reservations->map(function ($reservation) {
+        $statusOrder = [
+            'active' => 0,
+            'manual_override' => 1,
+            'done' => 2,
+            'cancelled_by_user' => 3,
+            'cancelled_by_owner' => 4,
+            'cancelled_by_admin' => 5,
+        ];
+
+        // Étape 1 : Tri global des réservations par statut (ordre défini)
+        $sorted = $reservations->sortBy(function ($reservation) use ($statusOrder) {
+            return $statusOrder[$reservation->status] ?? 99;
+        });
+
+        // Étape 2 : Mapping des données pour structurer chaque réservation
+        $formatted = $sorted->map(function ($reservation) {
             return [
                 'id' => $reservation->id,
                 'spot_identifier' => $reservation->parkingSpot?->identifier,
@@ -636,8 +651,56 @@ class ReservationController extends Controller
                 'group_token' => $reservation->group_token,
             ];
         });
-    }
 
+        // Étape 3 : Regroupement par statut, tri par start dans chaque groupe
+        return $formatted
+            ->groupBy('status')
+            ->map(function ($group, $status) {
+                return [
+                    'status' => $status,
+                    'items' => $group->sortBy('start')->values(),
+                ];
+            })
+            ->sortBy(function ($group) use ($statusOrder) {
+                return $statusOrder[$group['status']] ?? 99;
+            })
+            ->values(); // Nettoyage des clés d’index pour JSON
+    }
+    /**
+     * Format reservations grouped by their status
+     *
+     * @param \Illuminate\Support\Collection $reservations
+     * @return array
+     */
+    private function formatReservationsGroupedByStatus($reservations): array
+    {
+        return $reservations
+            ->groupBy('status')
+            ->map(function ($grouped, $status) {
+                return [
+                    'status' => $status,
+                    'count' => $grouped->count(),
+                    'data' => $grouped->map(function ($reservation) {
+                        return [
+                            'id' => $reservation->id,
+                            'spot_identifier' => $reservation->parkingSpot?->identifier,
+                            'parking_name' => $reservation->parkingSpot?->parking?->name,
+                            'user_name' => $reservation->user
+                                ? trim($reservation->user->first_name . ' ' . $reservation->user->last_name)
+                                : null,
+                            'user_email' => $reservation->user?->email,
+                            'start' => $reservation->start_datetime,
+                            'end' => $reservation->end_datetime,
+                            'license_plate' => $reservation->license_plate,
+                            'status' => $reservation->status,
+                            'group_token' => $reservation->group_token,
+                        ];
+                    }),
+                ];
+            })
+            ->values()
+            ->toArray();
+    }
     /*
 |--------------------------------------------------------------------------
 | Methodes principales
@@ -854,9 +917,7 @@ class ReservationController extends Controller
             if ($user->isAdmin()) {
                 $reservations = $reservationsQuery->get();
         } elseif ($user->isOwner()) {
-            $ownedSpotIds = ParkingSpot::whereHas('parking', function ($query) use ($user) {
-                $query->where('owner_id', $user->id);
-            })->pluck('id');
+            $ownedSpotIds = ParkingSpot::where('user_id', $user->id)->pluck('id');
 
             $reservations = $reservationsQuery
                 ->whereIn('parking_spot_id', $ownedSpotIds)
@@ -870,7 +931,119 @@ class ReservationController extends Controller
         $jsonFlags = JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT;
 
         return response()->json([
-            'reservations' => $this->formatReservations($reservations),
-        ], 200, [], $jsonFlags);
+            'reservations' => $this->formatReservationsGroupedByStatus($reservations),
+        ], $jsonFlags);
     }
+    /**
+     * Display all reservations associated with a given group_token.
+     *
+     * Access is allowed only for:
+     * - Admins (see all)
+     * - The user who made the reservations
+     * - The owner of the parking spots
+     */
+    public function show(string $groupToken, Request $request)
+    {
+        Log::info('Show method called', [
+            'group_token' => $groupToken,
+            'user_id' => $request->user()?->id,
+            'user_role' => $request->user()?->role,
+        ]);
+
+        $user = $request->user();
+
+        // Fetch all reservations with the same group token
+        $reservations = Reservation::with(['user', 'parkingSpot.parking'])
+            ->where('group_token', $groupToken)
+            ->get();
+
+        // If no reservations found for this token
+        if ($reservations->isEmpty()) {
+            return response()->json([
+                'message' => 'No reservations found for this group token.',
+            ], 404);
+        }
+
+        // Admin can access all reservations
+        if ($user->isAdmin()) {
+            return response()->json([
+                'reservations' => $this->formatReservations($reservations),
+            ], 200);
+        }
+
+        // Check if the user is the one who made these reservations
+        $userIsOwner = $reservations->first()->user_id === $user->id;
+
+        // Check if the user is the owner of at least one parking spot used in the group
+        $ownsSpot = $reservations->pluck('parking_spot_id')->contains(function ($spotId) use ($user) {
+            return ParkingSpot::where('id', $spotId)
+                ->where('user_id', $user->id)
+                ->exists();
+        });
+
+        if ($userIsOwner || $ownsSpot) {
+            return response()->json([
+                'reservations' => $this->formatReservations($reservations),
+            ], 200);
+        }
+
+        // Forbidden if the user is not authorized to view this group
+        return response()->json([
+            'message' => 'You are not authorized to view these reservations.',
+        ], 403);
+    }
+
+    /**
+     * Cancel (soft delete) all reservations in a group by groupToken.
+     *
+     * @param \Illuminate\Http\Request $request
+     * @param string $groupToken The group token for the reservation group.
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function destroy(Request $request, string $groupToken)
+    {
+        Log::info('Destroy method called', [
+            'group_token' => $groupToken,
+            'user_id' => $request->user()?->id,
+        ]);
+
+        $user = $request->user();
+
+        $reservations = Reservation::where('group_token', $groupToken)->get();
+
+        if ($reservations->isEmpty()) {
+            return response()->json(['message' => 'No reservations found for this group token.'], 404);
+        }
+
+        // Authorization check
+        foreach ($reservations as $reservation) {
+            if (
+                $user->id !== $reservation->user_id &&
+                $user->id !== $reservation->parkingSpot?->user_id &&
+                !$user->isAdmin()
+            ) {
+                return response()->json(['message' => 'You are not authorized to cancel these reservations.'], 403);
+            }
+        }
+
+        // Determine cancellation status
+        $status = match (true) {
+            $user->isAdmin() => 'cancelled_by_admin',
+            $reservations->first()->parkingSpot?->user_id === $user->id => 'cancelled_by_owner',
+            default => 'cancelled_by_user',
+        };
+
+        // Soft delete (change status)
+        foreach ($reservations as $reservation) {
+            $reservation->update(['status' => $status]);
+        }
+
+        return response()->json([
+            'message' => 'Reservations cancelled successfully.',
+            'status' => $status,
+            'group_token' => $groupToken,
+            'count' => $reservations->count(),
+        ]);
+    }
+
 }
