@@ -1,48 +1,32 @@
-# 📘 API Documentation - Parkings
-
+# 🚗 ParkingController – API Reference
 <details open>
 <summary>🇬🇧 English Version</summary>
 
-This documentation covers the available routes for managing **parkings** in the Laravel API.
+### 📘 `GET /api/parkings`
 
----
+Returns a list of parkings available to the authenticated user.
 
-## 🔐 All routes require authentication via Bearer token.
+- **Admins**: receive all parkings grouped by creator.
+- **Owners/Co-owners**: receive parkings they created or co-own.
+- **Response**: includes co-owner info.
 
----
+#### 🔐 Authentication required
 
-## 🔄 List Parkings
+#### ✅ Example response
 
-- **Method**: `GET`
-- **URL**: `/api/parkings`
-- **Access**:
-  - Admin: all parkings in the system grouped by creator, with co-owner info.
-  - Creator: only the parkings the user has created.
-  - Co-owner: only parkings where the user is listed as co-owner.
-  - All others: `403 Unauthorized`
-- **Note**: This endpoint does not return parking spots.
-- **Response**: List of parkings per role with co-owner details.
-
-**Response example**:
 ```json
 [
   {
-    "id": 1,
-    "name": "Parking Nord",
-    "street": "Rue des Lilas",
-    "location_number": "123",
-    "zip_code": "1000",
-    "city": "Brussels",
-    "country": "Belgium",
-    "total_capacity": 20,
-    "is_open_24h": true,
-    "opening_hours": null,
-    "opening_days": null,
-    "is_active": true,
-    "co_owners": [
+    "user": {
+      "full_name": "John Doe",
+      "email": "john@example.com"
+    },
+    "parkings": [
       {
-        "full_name": "John Smith",
-        "email": "john.smith@example.com"
+        "id": 1,
+        "name": "Main Lot",
+        "city": "Paris",
+        "co_owners": [...]
       }
     ]
   }
@@ -51,168 +35,119 @@ This documentation covers the available routes for managing **parkings** in the 
 
 ---
 
-## 📄 Parking Details
+### 📘 `POST /api/parkings`
 
-- **Method**: `GET`
-- **URL**: `/api/parkings/{id}`
-- **Access**:
-  - Admin
-  - Creator
-  - Co-owner
-  - Others: 403
-- **Response**: Full parking details including co-owners.
+Creates a new parking.  
+Only **admins** and **active owners** (`is_owner = true` and `is_active = true`) can create a parking.
 
-**Response example**:
+#### 📝 Required body
+
+```json
+{
+  "name": "Downtown Parking",
+  "street": "Rue de Rivoli",
+  "location_number": "42",
+  "zip_code": "75001",
+  "city": "Paris",
+  "country": "France",
+  "total_capacity": 20,
+  "is_open_24h": false,
+  "opening_hours": "08:00-20:00",
+  "opening_days": "1-5"
+}
+```
+
+#### ✅ Example response
+
+Returns the created parking with `201 Created`.
+
+---
+
+### 📘 `GET /api/parkings/{id}`
+
+Shows detailed info about a specific parking.  
+Access is allowed for **admins**, the **creator**, or a **co-owner**.
+
+#### ✅ Example response
+
 ```json
 {
   "id": 1,
-  "name": "Parking Nord",
-  "street": "Rue des Lilas",
-  "location_number": "123",
-  "zip_code": "1000",
-  "city": "Brussels",
-  "country": "Belgium",
-  "total_capacity": 20,
-  "is_open_24h": true,
-  "opening_hours": null,
-  "opening_days": null,
-  "is_active": true,
-  "co_owners": [
-    {
-      "full_name": "John Smith",
-      "email": "john.smith@example.com"
-    }
-  ]
+  "name": "Main Lot",
+  "city": "Paris",
+  "co_owners": [...]
 }
 ```
 
 ---
 
-## ➕ Create a new Parking
+### 📘 `PUT /api/parkings/{id}`
 
-- **Method**: `POST`
-- **URL**: `/api/parkings`
-- **Access**:
-  - Admins
-  - Users with `is_owner = true` and `is_active = true`
-- **Required fields**:
+Updates a parking.  
+Only **admins** or the **creator** can update it.
+
+- Can transfer ownership by `user_email`.
+- Can deactivate the parking and disable all spots.
+
+#### 📝 Optional body
+
 ```json
 {
-  "name": "Parking Nord",
-  "street": "Rue des Lilas",
-  "location_number": "123",
-  "zip_code": "1000",
-  "city": "Brussels",
-  "country": "Belgium",
-  "total_capacity": 20,
-  "is_open_24h": true,
-  "opening_hours": null,
-  "opening_days": null
+  "city": "Lyon",
+  "is_active": false,
+  "user_email": "newowner@example.com"
 }
 ```
 
-**Response example**:
+---
+
+### 📘 `DELETE /api/parkings/{id}`
+
+Soft-deletes a parking (`is_active = false`) and disables all related spots.  
+Access allowed for **admins** and **creator**.
+
+#### ✅ Example response
+
 ```json
 {
-  "message": "Parking successfully created",
-  "parking": {
-    "id": 1,
-    "name": "Parking Nord",
-    "is_active": true,
-    ...
-  }
-}
-```
-
-## 📝 Update a Parking
-- **Method**: `POST`
-- **URL**: `/api/parkings/{parkingid}`
-- **Access**:
-  - Admins
-  - Creator only
-  - Note: Cannot be updated by co-owners.
-  - Updatable fields: any of the creation fields + is_active
-
-**Response example**:
-```json
-{
-  "message": "Parking successfully updated",
-  "parking": {
-    "id": 1,
-    "name": "Parking South",
-    "total_capacity": 25,
-    ...
-  }
-}
-```
-
-⸻
-
-## ❌ Delete a Parking
-- **Method**: DELETE
-- **URL**: /api/parkings/{id}
-- **Access**:
-  - Admins
-  - Creator only
-  - Behavior: Performs a soft delete (is_active = false) and disables all parking spots.
-
-**Response example**:
-```json
-{
-  "message": "Parking successfully deactivated"
+  "message": "Parking soft-deleted (is_active = false)"
 }
 ```
 
 </details>
 
-
-
-⸻
-
-
 <details>
-<summary>🇫🇷 Version Française</summary>
 
-Cette documentation couvre les routes disponibles pour la gestion des **parkings** dans l’API Laravel.
+# 🚗 ParkingController – Référence API
 
+<summary>🇫🇷 Version française</summary>
 ---
 
-## 🔐 Toutes les routes nécessitent une authentification via token Bearer.
+### 📘 `GET /api/parkings`
 
----
+Retourne la liste des parkings accessibles à l’utilisateur authentifié.
 
-## 🔄 Liste des parkings
+- **Admins** : tous les parkings groupés par créateur.
+- **Propriétaires / Co-propriétaires** : parkings créés ou co-gérés.
+- **Réponse** : inclut les co-propriétaires.
 
-- **Méthode** : `GET`
-- **URL** : `/api/parkings`
-- **Accès** :
-  - Admin : tous les parkings du système regroupés par créateur avec les co-propriétaires
-  - Créateur : uniquement les parkings créés
-  - Co-propriétaire : uniquement les parkings dans lesquels il est listé
-  - Autres utilisateurs : `403 Unauthorized`
-- **Remarque** : Cette route ne retourne pas les places de parking (`spots`)
-- **Réponse** : Liste structurée des parkings avec les co-propriétaires selon le rôle
+#### 🔐 Authentification requise
 
-**Réponse attendue** :
+#### ✅ Exemple de réponse
+
 ```json
 [
   {
-    "id": 1,
-    "name": "Parking Nord",
-    "street": "Rue des Lilas",
-    "location_number": "123",
-    "zip_code": "1000",
-    "city": "Bruxelles",
-    "country": "Belgique",
-    "total_capacity": 20,
-    "is_open_24h": true,
-    "opening_hours": null,
-    "opening_days": null,
-    "is_active": true,
-    "co_owners": [
+    "user": {
+      "full_name": "John Doe",
+      "email": "john@example.com"
+    },
+    "parkings": [
       {
-        "full_name": "Jean Dupont",
-        "email": "jean.dupont@example.com"
+        "id": 1,
+        "name": "Main Lot",
+        "city": "Paris",
+        "co_owners": [...]
       }
     ]
   }
@@ -221,119 +156,83 @@ Cette documentation couvre les routes disponibles pour la gestion des **parkings
 
 ---
 
-## 📄 Détail d’un parking
+### 📘 `POST /api/parkings`
 
-- **Méthode** : `GET`
-- **URL** : `/api/parkings/{id}`
-- **Accès** :
-  - Admin
-  - Créateur
-  - Co-propriétaire
-  - Autres : erreur `403 Unauthorized`
-- **Réponse** : Détails complets du parking, y compris les co-propriétaires
+Crée un nouveau parking.  
+Seuls les **admins** et **propriétaires actifs** (`is_owner = true` et `is_active = true`) peuvent créer un parking.
 
-**Réponse attendue** :
+#### 📝 Corps requis
+
+```json
+{
+  "name": "Downtown Parking",
+  "street": "Rue de Rivoli",
+  "location_number": "42",
+  "zip_code": "75001",
+  "city": "Paris",
+  "country": "France",
+  "total_capacity": 20,
+  "is_open_24h": false,
+  "opening_hours": "08:00-20:00",
+  "opening_days": "1-5"
+}
+```
+
+#### ✅ Exemple de réponse
+
+Retourne le parking créé avec `201 Created`.
+
+---
+
+### 📘 `GET /api/parkings/{id}`
+
+Affiche les détails d’un parking spécifique.  
+Accès autorisé pour **admin**, **créateur** ou **co-propriétaire**.
+
+#### ✅ Exemple de réponse
+
 ```json
 {
   "id": 1,
-  "name": "Parking Nord",
-  "street": "Rue des Lilas",
-  "location_number": "123",
-  "zip_code": "1000",
-  "city": "Bruxelles",
-  "country": "Belgique",
-  "total_capacity": 20,
-  "is_open_24h": true,
-  "opening_hours": null,
-  "opening_days": null,
-  "is_active": true,
-  "co_owners": [
-    {
-      "full_name": "Jean Dupont",
-      "email": "jean.dupont@example.com"
-    }
-  ]
+  "name": "Main Lot",
+  "city": "Paris",
+  "co_owners": [...]
 }
 ```
 
 ---
 
-## ➕ Créer un nouveau parking
+### 📘 `PUT /api/parkings/{id}`
 
-- **Méthode** : `POST`
-- **URL** : `/api/parkings`
-- **Accès** :
-  - Admin
-  - Utilisateurs avec `is_owner = true` et `is_active = true`
-- **Champs requis** :
+Met à jour un parking.  
+Seuls les **admins** ou le **créateur** peuvent le modifier.
+
+- Peut changer le propriétaire via `user_email`.
+- Peut désactiver le parking et tous ses spots.
+
+#### 📝 Corps possible
+
 ```json
 {
-  "name": "Parking Nord",
-  "street": "Rue des Lilas",
-  "location_number": "123",
-  "zip_code": "1000",
-  "city": "Bruxelles",
-  "country": "Belgique",
-  "total_capacity": 20,
-  "is_open_24h": true,
-  "opening_hours": null,
-  "opening_days": null
-}
-```
-
-**Réponse attendue** :
-```json
-{
-  "message": "Parking créé avec succès",
-  "parking": {
-    "id": 1,
-    "name": "Parking Nord",
-    "is_active": true,
-    ...
-  }
+  "city": "Lyon",
+  "is_active": false,
+  "user_email": "newowner@example.com"
 }
 ```
 
 ---
 
-## 📝 Modifier un parking
+### 📘 `DELETE /api/parkings/{id}`
 
-- **Méthode** : `PUT`
-- **URL** : `/api/parkings/{id}`
-- **Accès** :
-  - Admins
-  - Créateur uniquement
-- **Remarque** : Les co-propriétaires ne peuvent pas modifier un parking
-- **Champs modifiables** : tous les champs de création + `is_active`
+Supprime logiquement un parking (`is_active = false`) et désactive tous les spots liés.  
+Accès autorisé pour **admins** et **créateur**.
 
-**Réponse attendue** :
+#### ✅ Exemple de réponse
+
 ```json
 {
-  "message": "Parking mis à jour avec succès",
-  "parking": {
-    "id": 1,
-    "name": "Parking Sud",
-    "total_capacity": 25,
-    ...
-  }
+  "message": "Parking soft-deleted (is_active = false)"
 }
 ```
 
----
-
-## ❌ Supprimer un parking
-
-- **Méthode** : `DELETE`
-- **URL** : `/api/parkings/{id}`
-- **Accès** :
-  - Admins
-  - Créateur uniquement
-- **Comportement** : Effectue une suppression douce en mettant `is_active = false` et désactive toutes les places associées
-
-**Réponse attendue** :
-```json
-{
-  "message": "Parking désactivé avec succès"
-}
-```
 </details>
